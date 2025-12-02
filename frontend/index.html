@@ -1,0 +1,726 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ReportApp</title>
+  <link rel="stylesheet" href="/static/styles.css?v=8">
+  <!-- Tailwind via CDN for rapid UI improvements -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Premium font -->
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    :root{
+      --glass-bg: rgba(255,255,255,0.72);
+      --accent-1: #667eea;
+      --accent-2: #764ba2;
+      --muted: #6b7280;
+    }
+    html,body{height:100%;}
+    body{
+      --glass-bg: rgba(255,255,255,0.72);
+      --accent-1: #667eea;
+      --accent-2: #764ba2;
+      --muted: #6b7280;
+      --bg-page: #ffffff;
+      --bg-panel: #ffffff;
+      --text-primary: #0f172a;
+      --text-muted: #6b7280;
+      -webkit-font-smoothing:antialiased;
+      -moz-osx-font-smoothing:grayscale;
+      padding: 28px;
+      font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial;
+      background-color: var(--bg-page);
+      color: var(--text-primary);
+    }
+    .dark {
+      --glass-bg: rgba(8,10,15,0.72);
+      --accent-1: #8ab4ff;
+      --accent-2: #b388ff;
+      --muted: #9ca3af;
+      --bg-page: #0b1220;
+      --bg-panel: #071226;
+      --text-primary: #e6eef8;
+      --text-muted: #9aa4b2;
+    }
+    .modal {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0,0,0,0.6);
+      z-index: 3000;
+      backdrop-filter: blur(4px);
+    }
+    
+    .modal.preview-modal {
+      z-index: 3100;
+    }
+    
+    .modal-content {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      background: var(--glass-bg);
+      padding: 28px;
+      border-radius: 14px;
+      width: 420px;
+      max-width: 94%;
+      box-shadow: 0 20px 40px rgba(16,24,40,0.25), 0 6px 12px rgba(16,24,40,0.08);
+      border: 1px solid rgba(16,24,40,0.06);
+    }
+    
+    .modal-content h3 {
+      margin: 0 0 20px 0;
+      color: #667eea;
+      font-size: 24px;
+    }
+    
+    .modal-content input,
+    .modal-content select {
+      width: 100%;
+      padding: 12px 16px;
+      margin-bottom: 15px;
+      border: 2px solid #e0e0e0;
+      border-radius: 8px;
+      font-size: 15px;
+      transition: border-color 0.3s;
+      box-sizing: border-box;
+    }
+    
+    .modal-content input:focus,
+    .modal-content select:focus {
+      outline: none;
+      border-color: #667eea;
+      box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+    }
+    
+    .modal-content button {
+      padding: 12px 24px;
+      margin-right: 10px;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 15px;
+      font-weight: 600;
+      transition: all 0.3s;
+    }
+    
+    .modal-content button[type="submit"],
+    .modal-content .btn-primary {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+    }
+    
+    .modal-content button[type="submit"]:hover,
+    .modal-content .btn-primary:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+    }
+    
+    .modal-content .btn-secondary {
+      background: #6c757d;
+      color: white;
+    }
+    
+    .modal-content .btn-secondary:hover {
+      background: #5a6268;
+    }
+
+    /* Premium buttons and cards */
+    .btn-primary {
+      background: linear-gradient(90deg,var(--accent-1),var(--accent-2));
+      color: white; padding: 10px 14px; border-radius: 10px; border: none; font-weight: 600;
+      box-shadow: 0 8px 20px rgba(102,126,234,0.18);
+    }
+    .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 12px 30px rgba(102,126,234,0.22); }
+    .btn-secondary { background: rgba(15,23,42,0.06); color: var(--muted); padding: 8px 12px; border-radius: 10px; border: 1px solid rgba(15,23,42,0.04); }
+    .btn-secondary:hover { background: rgba(15,23,42,0.08); }
+
+    .section-card { background: linear-gradient(180deg,#ffffff,#fbfbff); border-radius: 12px; border: 1px solid rgba(16,24,40,0.04); box-shadow: 0 6px 18px rgba(16,24,40,0.06); }
+
+    /* Header styling */
+    #app > h1 { font-weight: 800; letter-spacing: -0.6px; color: var(--accent-1); margin-bottom: 12px; }
+    #adminHeaderControls button { transition: transform 0.18s, box-shadow 0.18s; }
+    #adminHeaderControls button:hover { transform: translateY(-3px); box-shadow: 0 10px 24px rgba(102,126,234,0.12); }
+
+    /* Subtle input styling across page */
+    input, select, textarea { border-radius: 10px; border: 1px solid rgba(15,23,42,0.06); padding: 10px 12px; }
+    input:focus, select:focus, textarea:focus { box-shadow: 0 6px 18px rgba(102,126,234,0.08); border-color: var(--accent-1); }
+  </style>
+  </head>
+  <body>
+    <span class="text-3xl">📊</span>
+            <span class="text-xl font-semibold">Dashboard</span>
+          </h2>
+          <p style="margin: 5px 0; color: #666;">
+            Welcome, <strong id="currentUser" style="color: #667eea;"></strong>!
+          </p>
+        </div>
+          <div style="display: flex; gap: 10px; align-items: center;">
+              <div id="dbStatus" class="db-status-badge"></div>
+              <div id="adminHeaderControls" style="display:none; gap:8px; align-items:center;">
+                <button id="showAdminSettingsBtn" class="flex items-center gap-2 px-3 py-2 bg-sky-400 text-gray-900 rounded-md font-medium shadow-sm" title="Configure separate report database">🗄️ Report DB</button>
+                <button id="showReportDefsBtn" class="flex items-center gap-2 px-3 py-2 bg-amber-400 text-gray-900 rounded-md font-medium shadow-sm" title="Manage report definitions">🗂️ Report Definitions</button>
+              </div>
+              <button id="themeToggleBtn" class="px-3 py-2 bg-gray-100 text-gray-800 rounded-md" title="Toggle theme">🌙</button>
+              <button id="logoutBtn" class="bg-gray-600 text-white px-3 py-2 rounded-md font-semibold">🚪 Logout</button>
+        </div>
+      </div>
+
+      <!-- User Actions (for all logged-in users) -->
+      <div id="userActionsSection" style="margin-top: 30px;">
+        <h3 style="font-size: 18px; color: #555; margin-bottom: 15px; display: flex; align-items: center; gap: 8px;">
+          <span style="font-size: 20px;">🎯</span> Quick Actions
+        </h3>
+        <div class="section-card p-5 bg-white rounded-lg shadow-sm" style="padding: 20px;">
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px;">
+            <button id="showImportBtnUser" class="flex items-center gap-2 px-4 py-3 bg-sky-500 text-white rounded-lg font-semibold shadow-sm" title="Upload CSV/Excel into SQL Server">
+                <span class="text-lg">📤</span> Import Data
+              </button>
+              <button id="showReportBtn" class="flex items-center gap-2 px-4 py-3 bg-pink-500 text-white rounded-lg font-semibold shadow-sm" title="Generate reports from data">
+                <span class="text-lg">📊</span> Generate Report
+              </button>
+              <button id="showPowerBIBtn" class="flex items-center gap-2 px-4 py-3 bg-yellow-400 text-white rounded-lg font-semibold shadow-sm" title="View Power BI Dashboard">
+                <span class="text-lg">📈</span> Power BI Dashboard
+              </button>
+          </div>
+        </div>
+      </div>
+      
+      <div id="adminSection" style="display:none">
+        <!-- Summary Statistics (Admin Only) -->
+        <div style="margin-bottom: 30px;">
+          <h3 style="font-size: 18px; color: #555; margin-bottom: 15px; display: flex; align-items: center; gap: 8px;">
+            <span style="font-size: 20px;">📈</span> Statistics Overview
+          </h3>
+          <div id="summaryRow" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px;">
+            <div class="section-card p-6 rounded-xl shadow-md" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 24px; border-radius: 12px; box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);">
+              <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 12px;">
+                <span style="font-size: 32px; opacity: 0.9;">👥</span>
+                <div style="font-size: 14px; opacity: 0.9; font-weight: 500;">Total Users</div>
+              </div>
+              <div id="summaryUsers" style="font-size: 36px; font-weight: 700; letter-spacing: -1px;">-</div>
+              <div style="font-size: 12px; opacity: 0.8; margin-top: 4px;">Active accounts</div>
+            </div>
+            
+            <div class="section-card p-6 rounded-xl shadow-md" style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); color: white; padding: 24px; border-radius: 12px; box-shadow: 0 4px 12px rgba(240, 147, 251, 0.3);">
+              <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 12px;">
+                <span style="font-size: 32px; opacity: 0.9;">📥</span>
+                <div style="font-size: 14px; opacity: 0.9; font-weight: 500;">Data Imported</div>
+              </div>
+              <div id="summaryImports" style="font-size: 36px; font-weight: 700; letter-spacing: -1px;">-</div>
+              <div id="summaryImportsLast" style="font-size: 12px; opacity: 0.8; margin-top: 4px;">No imports yet</div>
+            </div>
+            
+            <div class="section-card p-6 rounded-xl shadow-md" style="background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); color: white; padding: 24px; border-radius: 12px; box-shadow: 0 4px 12px rgba(79, 172, 254, 0.3);">
+              <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 12px;">
+                <span style="font-size: 32px; opacity: 0.9;">📋</span>
+                <div style="font-size: 14px; opacity: 0.9; font-weight: 500;">Reports Generated</div>
+              </div>
+              <div id="summaryReports" style="font-size: 36px; font-weight: 700; letter-spacing: -1px;">-</div>
+              <div id="summaryReportsLast" style="font-size: 12px; opacity: 0.8; margin-top: 4px;">No reports yet</div>
+            </div>
+            
+            <div class="section-card p-6 rounded-xl shadow-md" style="background: linear-gradient(135deg, #fa709a 0%, #fee140 100%); color: white; padding: 24px; border-radius: 12px; box-shadow: 0 4px 12px rgba(250, 112, 154, 0.3);">
+              <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 12px;">
+                <span style="font-size: 32px; opacity: 0.9;">🗄️</span>
+                <div style="font-size: 14px; opacity: 0.9; font-weight: 500;">Data Tables</div>
+              </div>
+              <div id="summaryTables" style="font-size: 36px; font-weight: 700; letter-spacing: -1px;">-</div>
+              <div style="font-size: 12px; opacity: 0.8; margin-top: 4px;">Available tables</div>
+            </div>
+          </div>
+        </div>
+        
+        <h3 style="font-size: 18px; color: #555; margin-bottom: 15px; display: flex; align-items: center; gap: 8px;">
+          <span style="font-size: 20px;">⚙️</span> Admin Controls
+        </h3>
+            <div class="section-card p-5 bg-white rounded-lg shadow-sm" style="padding: 20px;">
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px;">
+              <!-- Report DB Settings moved to header for prominent admin access -->
+            <button id="showCreateUserBtn" class="flex items-center gap-2 px-4 py-3 bg-pink-500 text-white rounded-lg font-semibold shadow-sm" title="Create a new application user">
+              <span style="font-size: 18px;">👤</span> Create User
+            </button>
+            <button id="showUsersBtn" class="flex items-center gap-2 px-4 py-3 bg-rose-400 text-white rounded-lg font-semibold shadow-sm" title="View and manage users">
+              <span style="font-size: 18px;">👥</span> Manage Users
+            </button>
+            <button id="showPowerBISettingsBtn" class="flex items-center gap-2 px-4 py-3 bg-yellow-400 text-white rounded-lg font-semibold shadow-sm" title="Configure Power BI Dashboard">
+              <span style="font-size: 18px;">⚙️</span> Power BI Settings
+            </button>
+          </div>
+        </div>
+        
+        <!-- Recent Activity -->
+        <div style="margin-top: 30px;">
+          <h3 style="font-size: 18px; color: #555; margin-bottom: 15px; display: flex; align-items: center; gap: 8px;">
+            <span style="font-size: 20px;">🕒</span> Recent Activity
+          </h3>
+          <div class="section-card p-5 bg-white rounded-lg shadow-sm" style="padding: 20px;">
+            <div id="recentActivity" style="max-height: 300px; overflow-y: auto;">
+              <div style="text-align: center; color: #999; padding: 40px 20px;">
+                <span style="font-size: 48px; opacity: 0.3;">📭</span>
+                <p style="margin-top: 10px;">No recent activity</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      <!-- Power BI Viewer Modal -->
+      <div id="powerbiModal" class="modal">
+        <div class="modal-content bg-white rounded-xl shadow-xl" style="max-width: 95%; width: 1400px; max-height: 95vh; overflow: hidden; display: flex; flex-direction: column;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+            <h3 style="margin: 0;" id="powerbiTitle">Power BI Dashboard</h3>
+            <button id="closePowerBIBtn" class="px-3 py-1 bg-gray-200 rounded">Close</button>
+          </div>
+          
+          <!-- Tab navigation -->
+          <div style="display: flex; gap: 10px; margin-bottom: 15px; border-bottom: 2px solid #e0e0e0; padding-bottom: 10px;">
+            <button id="tabWebDashboard" class="powerbi-tab active px-3 py-2 font-semibold text-indigo-600 border-b-2 border-indigo-600" style="cursor: pointer;">
+              🌐 Web Dashboard
+            </button>
+            <button id="tabLocalFiles" class="powerbi-tab px-3 py-2 font-semibold text-gray-600" style="cursor: pointer;">
+              📁 Local Files
+            </button>
+          </div>
+          
+          <!-- Web Dashboard Tab Content -->
+          <div id="webDashboardContent" style="flex: 1; overflow: hidden; background: #f5f5f5; border-radius: 8px; position: relative; display:flex; flex-direction:column;">
+            <div id="powerbiToolbar" style="display:flex; gap:6px; padding:6px 10px; background:#fff; border-bottom:1px solid #e0e0e0; align-items:center; font-size:13px;">
+              <span style="font-weight:600; color:#667eea;">View:</span>
+              <button type="button" class="btn-secondary powerbi-fit-btn" data-fit="actual" style="padding:6px 10px; margin:0;">Actual</button>
+              <button type="button" class="btn-secondary powerbi-fit-btn" data-fit="width" style="padding:6px 10px; margin:0;">Fit Width</button>
+              <button type="button" class="btn-secondary powerbi-fit-btn" data-fit="height" style="padding:6px 10px; margin:0;">Fit Height</button>
+              <button type="button" class="btn-secondary powerbi-fit-btn" data-fit="full" style="padding:6px 10px; margin:0;">Fullscreen</button>
+              <div style="margin-left:auto; display:flex; align-items:center; gap:4px;">
+                <label for="powerbiZoom" style="font-weight:600;">Zoom</label>
+                <select id="powerbiZoom" style="padding:4px 6px; border:1px solid #ccc; border-radius:4px; font-size:12px;">
+                  <option value="0.8">80%</option>
+                  <option value="0.9">90%</option>
+                  <option value="1" selected>100%</option>
+                  <option value="1.1">110%</option>
+                  <option value="1.2">120%</option>
+                </select>
+              </div>
+            </div>
+            <div id="powerbiViewport" style="flex:1; position:relative; overflow:hidden;">
+              <iframe id="powerbiIframe" style="width:100%; height:100%; border:none; border-radius:0; transform-origin: top left;"></iframe>
+            </div>
+          </div>
+          
+          <!-- Local Files Tab Content -->
+          <div id="localFilesContent" style="display: none; flex: 1; overflow: auto; background: #f5f5f5; border-radius: 8px; padding: 20px;">
+            <div style="margin-bottom: 15px;">
+              <button id="refreshLocalFilesBtn" class="px-2 py-1 bg-gray-200 rounded">🔄 Refresh List</button>
+            </div>
+            <div id="localFilesList"></div>
+          </div>
+          
+          <div id="powerbiMsg" style="margin-top: 10px; color: #999; text-align: center;"></div>
+        </div>
+      </div>
+      
+      <!-- Power BI Settings Modal (Admin Only) - Multi-Report Management -->
+      <div id="powerbiSettingsModal" class="modal">
+        <div class="modal-content bg-white rounded-lg shadow" style="max-width: 700px; width: 90%; max-height: 90vh; overflow-y: auto;">
+          <h3>Power BI Reports Management</h3>
+          
+          <!-- Add New Report Section -->
+          <div style="background: #f0f4ff; padding: 15px; border-radius: 8px; margin-bottom: 20px; border-left: 4px solid #667eea;">
+            <h4 style="margin: 0 0 15px 0; font-size: 15px; color: #667eea;">➕ Add New Report</h4>
+            
+            <label>Report Name:</label>
+            <input id="powerbiReportName" type="text" placeholder="e.g., Sales Dashboard" style="width: 100%; padding: 12px 16px; margin-bottom: 15px; border: 2px solid #e0e0e0; border-radius: 8px; font-size: 15px; box-sizing: border-box;" />
+            
+            <label>Embed URL:</label>
+            <input id="powerbiEmbedUrl" type="url" placeholder="https://app.powerbi.com/view?r=... or http://server/Reports/powerbi/..." style="width: 100%; padding: 12px 16px; margin-bottom: 15px; border: 2px solid #e0e0e0; border-radius: 8px; font-size: 15px; box-sizing: border-box;" />
+            
+            <div style="background: white; padding: 12px; border-radius: 6px; margin-bottom: 15px; border: 1px solid #e0e0e0;">
+              <h5 style="margin: 0 0 10px 0; font-size: 13px; color: #555;">Display Options</h5>
+              <label style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px; cursor: pointer;">
+                <input id="powerbiShowFilterPane" type="checkbox" checked />
+                <span>Show Filter Pane</span>
+              </label>
+              <label style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px; cursor: pointer;">
+                <input id="powerbiShowNavPane" type="checkbox" checked />
+                <span>Show Navigation Pane</span>
+              </label>
+              <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                <input id="powerbiAllowFullscreen" type="checkbox" checked />
+                <span>Allow Fullscreen Mode</span>
+              </label>
+            </div>
+            
+            <button id="addPowerBIReportBtn" class="w-full bg-indigo-600 text-white px-3 py-2 rounded mb-2">Add Report</button>
+                <button id="showReportDefsBtn" class="flex items-center gap-2 px-4 py-3 bg-sky-500 text-white rounded-lg font-semibold justify-center">
+                  🗂️ Report Definitions
+                </button>
+            <div id="powerbiAddMsg" style="color: #666; font-size: 13px;"></div>
+          </div>
+          
+          <!-- Reports List Section -->
+          <div style="background: #fff3e0; padding: 15px; border-radius: 8px; border-left: 4px solid #f9484a;">
+            <h4 style="margin: 0 0 15px 0; font-size: 15px; color: #d32f2f;">📋 Existing Reports</h4>
+            <div id="powerbiReportsList" style="max-height: 300px; overflow-y: auto;">
+              <div style="text-align: center; color: #999; padding: 30px 10px;">
+                <p>Loading reports...</p>
+              </div>
+            </div>
+          </div>
+          
+          <div style="margin-top: 20px; display: flex; gap: 10px; justify-content: flex-end;">
+            <button id="closePowerBISettingsBtn" class="px-3 py-1 bg-gray-200 rounded">Close</button>
+          </div>
+          
+          <div id="powerbiSettingsMsg" style="margin-top: 15px;"></div>
+        </div>
+      </div>
+      
+      <!-- Create User Modal -->
+      <div id="createUserModal" class="modal">
+        <div class="modal-content">
+          <h3>Create New User</h3>
+          <input id="newUsername" type="text" placeholder="Username" />
+          <input id="newPassword" type="password" placeholder="Password" />
+          <select id="newUserRole">
+            <option value="user">User</option>
+            <option value="admin">Admin</option>
+          </select>
+          <div>
+            <button id="createUserBtn" class="px-3 py-2 bg-emerald-600 text-white rounded">Create User</button>
+            <button id="closeCreateUserBtn" class="px-3 py-2 bg-gray-200 rounded">Cancel</button>
+          </div>
+          <div id="createUserMsg" style="margin-top: 15px;"></div>
+        </div>
+      </div>
+
+      <!-- Admin Settings Modal -->
+      <div id="adminSettingsModal" class="modal">
+        <div class="modal-content" style="max-width: 700px; width: 95%;">
+          <h3>Report Databases (Definitions & Runtime)</h3>
+          <div style="margin:8px 0 16px 0; padding:10px; background:#fff3cd; border:1px solid #ffe08a; color:#7a5e00; border-radius:6px; font-size:13px;">
+            Main Database is configured on the login page. Use this panel to select two databases: <strong>Definitions DB</strong> (stores report names and stored-procedure definitions) and <strong>Runtime DB</strong> (where stored procedures are executed and report data is read). Both databases should be on the same SQL Server instance.
+          </div>
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+            <div>
+              <label>Driver</label>
+              <input id="setDriver" placeholder="ODBC Driver 18 for SQL Server" list="driverOptions" disabled />
+              <datalist id="driverOptions"></datalist>
+            </div>
+            <div>
+              <label>Host</label>
+              <input id="setHost" placeholder="SERVER or SERVER\\INSTANCE" disabled />
+            </div>
+            <div>
+              <label>Port</label>
+              <input id="setPort" type="number" placeholder="1433" disabled />
+            </div>
+            <div>
+              <label>Main Database</label>
+              <input id="setDatabase" placeholder="ReportApp" disabled />
+            </div>
+            <div style="grid-column:1 / span 2; display:flex; gap:12px; align-items:center;">
+              <label style="display:flex; align-items:center; gap:6px;"><input id="setTrusted" type="checkbox" checked disabled /> Windows Authentication</label>
+              <label style="display:flex; align-items:center; gap:6px;"><input id="setEncrypt" type="checkbox" disabled /> Encrypt</label>
+            </div>
+            <div id="sqlAuthRow" style="grid-column:1 / span 2; display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+              <div>
+                <label>Username</label>
+                <input id="setUsername" placeholder="SQL Login" disabled />
+              </div>
+              <div>
+                <label>Password</label>
+                <input id="setPassword" type="password" placeholder="(leave blank to keep)" disabled />
+              </div>
+            </div>
+          </div>
+            <div style="margin-top:16px; padding:12px; border-left:4px solid #4caf50; background:#f1f8e9; border-radius:6px;">
+            <div style="font-weight:700; color:#2e7d32; margin-bottom:8px;">Report Databases</div>
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; align-items:end;">
+              <div>
+                <label>Definitions DB (stores report definitions)</label>
+                <input id="setReportDatabase" placeholder="ReportAppReports" list="dbOptions" />
+                <datalist id="dbOptions"></datalist>
+                <div style="font-size:12px; color:#555; margin-top:6px;">This DB stores `dbo.report_definitions` used by the admin UI.</div>
+              </div>
+              <div>
+                <label>Runtime DB (executes stored procedures)</label>
+                <input id="setReportsDatabase" placeholder="property_manager_db" list="dbOptions" />
+                <div style="font-size:12px; color:#555; margin-top:6px;">This DB contains the stored procedures and data that report definitions run against.</div>
+              </div>
+              <div style="display:flex; gap:8px; align-items:flex-end;">
+                <button id="loadDatabasesBtn" class="px-2 py-1 bg-gray-200 rounded" title="Load databases from server">Load DBs</button>
+                <div style="display:flex; gap:8px;">
+                  <button id="testReportDbBtn" class="btn-secondary">Test Definitions DB</button>
+                  <button id="testRuntimeDbBtn" class="btn-secondary">Test Runtime DB</button>
+                </div>
+              </div>
+            </div>
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-top:8px;">
+              <div id="reportDbStatus" style="font-size:12px; color:#666;"></div>
+              <div id="runtimeDbStatus" style="font-size:12px; color:#666;"></div>
+            </div>
+          </div>
+          <div style="margin-top:16px; display:flex; gap:10px; justify-content:flex-end;">
+            <button id="loadDriversBtn" class="btn-secondary" title="Load installed ODBC drivers" disabled>Load Drivers</button>
+            <button id="saveAdminSettingsBtn" class="btn-primary">Save Report DB</button>
+            <button id="closeAdminSettingsBtn" class="btn-secondary">Close</button>
+          </div>
+          <div id="adminSettingsMsg" style="margin-top:10px; font-size:13px;"></div>
+        </div>
+      </div>
+
+      <!-- Report Definitions Modal (Admin) -->
+      <div id="reportDefsModal" class="modal">
+        <div class="modal-content bg-white rounded-lg shadow-lg" style="max-width:900px; width:95%;">
+          <h3 style="display:flex; align-items:center; gap:8px; margin-top:0;">🗂️ Report Definitions</h3>
+          <p style="margin:0 0 12px 0; font-size:13px; color:#555;">Create, update and remove stored procedure based report definitions. Parameters are an ordered list matching the stored procedure signature.</p>
+          <div style="display:grid; grid-template-columns:300px 1fr; gap:16px;">
+            <div style="border-right:1px solid #ddd; padding-right:12px; max-height:420px; overflow:auto;">
+              <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                <strong style="font-size:13px;">Definitions</strong>
+                <button id="refreshDefsBtn" class="btn-secondary" style="padding:6px 10px; font-size:12px;">Refresh</button>
+              </div>
+              <div id="defsList" style="display:flex; flex-direction:column; gap:6px;"></div>
+            </div>
+            <div>
+              <div style="display:flex; gap:10px; margin-bottom:10px;">
+                <button id="newDefBtn" class="px-3 py-2 bg-emerald-500 text-white rounded-md font-semibold">New Definition</button>
+                <button id="saveDefBtn" class="px-3 py-2 bg-gray-700 text-white rounded-md font-semibold">Save Changes</button>
+                <button id="deleteDefBtn" class="px-3 py-2 bg-red-600 text-white rounded-md font-semibold">Delete</button>
+                <button id="editParamsBtn" class="px-3 py-2 bg-slate-200 text-slate-800 rounded-md">Edit Parameter Objects</button>
+              </div>
+              <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+                <div>
+                  <label style="font-size:12px;">Report Name</label>
+                  <input id="defReportName" placeholder="SalesSummary" />
+                </div>
+                <div>
+                  <label style="font-size:12px;">Stored Procedure</label>
+                  <input id="defStoredProc" placeholder="usp_MyReportProcedure" />
+                </div>
+                <div style="grid-column:1 / span 2;">
+                  <label style="font-size:12px;">Parameters (comma separated)</label>
+                  <input id="defParameters" placeholder="start_date,end_date,region" />
+                </div>
+                <div style="display:flex; align-items:center; gap:8px;">
+                  <input id="defActive" type="checkbox" checked /> <label for="defActive" style="font-size:12px;">Active</label>
+                </div>
+                <div style="grid-column:1 / span 2; font-size:12px; color:#666;" id="defMsg"></div>
+                <div style="grid-column:1 / span 2; margin-top:10px; display:flex; gap:8px; align-items:center;">
+                  <button id="editParamsBtn" class="btn-secondary" style="padding:8px 12px;">Edit Parameter Objects</button>
+                  <div style="font-size:12px; color:#666;">Open a structured editor for parameters (name + optional <code>values_query</code>).</div>
+                </div>
+                <textarea id="defParametersJson" style="display:none;" aria-hidden="true"></textarea>
+              </div>
+            </div>
+          </div>
+          <div style="margin-top:18px; display:flex; justify-content:flex-end; gap:10px;">
+            <button id="closeDefsBtn" class="btn-secondary">Close</button>
+          </div>
+        </div>
+      </div>
+      
+      <!-- Parameter Objects Editor Modal -->
+      <div id="paramEditorModal" class="modal">
+        <div class="modal-content bg-white rounded-lg shadow-lg" style="max-width:800px; width:95%; max-height:80vh; overflow:auto;">
+          <div class="flex items-center justify-between mb-3">
+            <h3 class="text-xl font-semibold text-indigo-600">Edit Parameters</h3>
+            <button id="closeParamEditorBtn" class="px-3 py-1 bg-gray-200 rounded">Close</button>
+          </div>
+          <p class="text-sm text-gray-600">Define parameter objects for this report definition. Each entry should include a <code>name</code> and may include a SQL <code>values_query</code> that will be executed against the runtime DB to populate dropdowns.</p>
+          <div id="paramsEditorList" class="flex flex-col gap-3 mt-4">Loading...</div>
+          <div class="mt-4 flex gap-2">
+            <button id="addParamRowBtn" class="px-3 py-2 bg-indigo-600 text-white rounded">Add Parameter</button>
+            <button id="saveParamsBtn" class="px-3 py-2 bg-emerald-600 text-white rounded">Save Parameters</button>
+          </div>
+          <div id="paramEditorMsg" class="mt-3 text-sm text-gray-600"></div>
+        </div>
+      </div>
+
+      <!-- Import Data Modal -->
+      <!-- Preview Modal -->
+      <div id="previewModal" class="modal preview-modal">
+        <div class="modal-content" style="max-width: 95%; width: 1200px; max-height: 90vh; overflow: hidden; display: flex; flex-direction: column;">
+          <h3>Import Preview</h3>
+          <div id="previewContent" style="flex: 1; overflow: auto; margin-bottom: 15px;"></div>
+          <div>
+            <button id="closePreviewBtn" class="btn-secondary">Close</button>
+          </div>
+        </div>
+      </div>
+
+      <div id="importModal" class="modal">
+        <div class="modal-content">
+          <h3>Import Data</h3>
+          <label for="tableSelect">Select Table:</label>
+          <select id="tableSelect" style="width: 100%; padding: 12px 16px; margin-bottom: 15px; border: 2px solid #e0e0e0; border-radius: 8px; font-size: 15px; box-sizing: border-box;">
+            <option value="">-- Select a table --</option>
+            <option value="__CREATE_NEW__">✨ Create New Table (from filename)</option>
+          </select>
+          <button id="refreshTablesBtn" class="btn-secondary" style="margin-bottom: 15px;">Refresh Tables</button>
+          <br>
+          <label>Select Files (CSV, Excel):</label>
+          <input id="fileInput" type="file" accept=".csv,.xlsx,.xls" multiple style="width: 100%; padding: 10px; margin-bottom: 15px; border: 2px solid #e0e0e0; border-radius: 8px;" />
+          <label for="sheetName">Sheet name (for Excel):</label>
+          <select id="sheetName" style="width: 100%; padding: 12px 16px; margin-bottom: 15px; border: 2px solid #e0e0e0; border-radius: 8px; font-size: 15px; box-sizing: border-box;">
+            <option value="">-- Select a file first --</option>
+          </select>
+          <div style="margin-bottom: 10px;">
+            <button id="previewImportBtn" class="btn-secondary" style="margin-right: 10px;">Preview First Rows</button>
+          </div>
+          <div>
+            <button id="importBtn" class="btn-primary">Upload & Import</button>
+            <button id="closeImportBtn" class="btn-secondary">Cancel</button>
+          </div>
+          <div id="importMsg" style="margin-top: 15px;"></div>
+        </div>
+      </div>
+      
+      <!-- Users List Modal -->
+      <div id="usersModal" class="modal">
+        <div class="modal-content" style="max-width: 900px; width: 90%;">
+          <h3>Manage Users</h3>
+          <button id="refreshUsersBtn" class="btn-secondary" style="margin-bottom: 15px;">Refresh Users</button>
+          <button id="closeUsersBtn" class="btn-secondary" style="margin-bottom: 15px; margin-left: 10px;">Close</button>
+          <div id="usersList"></div>
+        </div>
+      </div>
+
+      <!-- Change Password Modal (forced on first login if required) -->
+      <div id="changePwdModal" class="modal">
+        <div class="modal-content" style="max-width: 420px; width: 95%;">
+          <h3>Change Password</h3>
+          <p style="margin:8px 0 16px; color:#555;">For security, please set a new password for your account.</p>
+          <label>New Password</label>
+          <input id="newPwd" type="password" placeholder="Enter new password" />
+          <label>Confirm Password</label>
+          <input id="newPwd2" type="password" placeholder="Confirm new password" />
+          <div>
+            <button id="savePwdBtn" class="btn-primary">Update Password</button>
+            <button id="cancelPwdBtn" class="btn-secondary">Cancel</button>
+          </div>
+          <div id="changePwdMsg" style="margin-top:12px; font-size:13px;"></div>
+        </div>
+      </div>
+      
+      <!-- Edit User Modal -->
+      <div id="editUserModal" class="modal">
+        <div class="modal-content">
+          <h3>Edit User</h3>
+          <input id="editUserId" type="hidden" />
+          <label>Username:</label>
+          <input id="editUsername" type="text" placeholder="Username" />
+          <label>New Password (leave empty to keep current):</label>
+          <input id="editPassword" type="password" placeholder="New Password" />
+          <label>Role:</label>
+          <select id="editUserRole">
+            <option value="user">User</option>
+            <option value="admin">Admin</option>
+          </select>
+          <div>
+            <button id="saveUserBtn" class="btn-primary">Save Changes</button>
+            <button id="closeEditUserBtn" class="btn-secondary">Cancel</button>
+          </div>
+          <div id="editUserMsg" style="margin-top: 15px;"></div>
+        </div>
+      </div>
+      
+      <div>
+        <h3>Run Report</h3>
+        <input id="reportName" placeholder="report name" />
+        <button id="runBtn">Run</button>
+        <pre id="output"></pre>
+      </div>
+    </div>
+  </div>
+  <script src="/static/app.js?v=21"></script>
+  <script>
+    // Theme toggle: persist in localStorage and apply .dark to <html>
+    (function(){
+      const btn = document.getElementById('themeToggleBtn');
+      function applyTheme(t){
+        if (t === 'dark') document.documentElement.classList.add('dark'); else document.documentElement.classList.remove('dark');
+        if (btn) btn.textContent = t === 'dark' ? '☀️' : '🌙';
+      }
+      const saved = localStorage.getItem('theme');
+      if (saved) applyTheme(saved);
+      else {
+        // prefer system dark if no saved preference
+        const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+        applyTheme(prefersDark ? 'dark' : 'light');
+      }
+      if (btn) btn.addEventListener('click', () => {
+        const isDark = document.documentElement.classList.toggle('dark');
+        const t = isDark ? 'dark' : 'light';
+        localStorage.setItem('theme', t);
+        applyTheme(t);
+      });
+    })();
+  </script>
+    <script>
+      // Ensure modals can overlay everything: move .modal elements to document.body and bump z-index.
+      (function(){
+        function normalizeModals(){
+          document.querySelectorAll('.modal').forEach(m => {
+            try{
+              if (m.parentElement !== document.body) document.body.appendChild(m);
+              m.style.position = 'fixed';
+              m.style.inset = '0';
+              m.style.zIndex = '100000';
+              // keep existing display (show/hide controlled by app)
+            }catch(e){console.warn('modal normalize error', e)}
+          });
+        }
+        if (document.readyState === 'complete' || document.readyState === 'interactive') normalizeModals();
+        else document.addEventListener('DOMContentLoaded', normalizeModals);
+        // also run on window load to catch dynamic insertions
+        window.addEventListener('load', normalizeModals);
+      })();
+    </script>
+      <script>
+        // Prevent multiple modals stacking: when one modal becomes visible, hide the others.
+        (function(){
+          const modals = () => Array.from(document.querySelectorAll('.modal'));
+          function onModalVisible(changed){
+            const visible = modals().filter(m => getComputedStyle(m).display !== 'none');
+            if (visible.length <= 1) return;
+            // keep the most recently changed visible modal (if provided) otherwise the last in DOM
+            const keep = changed && getComputedStyle(changed).display !== 'none' ? changed : visible[visible.length-1];
+            modals().forEach(m => {
+              if (m !== keep) {
+                m.style.display = 'none';
+              } else {
+                m.style.zIndex = '100000';
+                const inner = m.querySelector('.modal-content');
+                if (inner) inner.style.zIndex = '100001';
+              }
+            });
+          }
+
+          // Observe style/class changes on modals
+          modals().forEach(m => {
+            const obs = new MutationObserver((mutations)=>{
+              mutations.forEach(mu=>{
+                if (mu.type === 'attributes') onModalVisible(m);
+              });
+            });
+            obs.observe(m, { attributes: true, attributeFilter: ['style','class'] });
+          });
+
+          // Also ensure clicks that open modals hide others (covers code paths that set display directly)
+          document.addEventListener('click', (ev)=>{
+            const target = ev.target.closest('[data-opens-modal]');
+            if (!target) return;
+            const id = target.getAttribute('data-opens-modal');
+            const m = document.getElementById(id);
+            if (m) onModalVisible(m);
+          });
+        })();
+      </script>
+</body>
+</html>

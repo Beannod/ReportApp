@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.sqlite3
+
+# Environments
+.venv/
+venv/
+ENV/
+.env
+.env.*
+
+# VS Code
+.vscode/
+
+# Node/Web
+node_modules/
+frontend/*.map
+
+# OS
+.DS_Store
+Thumbs.db
+
+# App
+instance/settings.json
+import_to_sql/Excel/

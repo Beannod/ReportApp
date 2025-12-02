@@ -1,0 +1,1388 @@
+from fastapi import APIRouter, HTTPException, Depends, UploadFile, File, Form
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from pydantic import BaseModel
+from typing import Optional, List
+from . import db
+import datetime
+import json
+from jose import JWTError, jwt
+from passlib.context import CryptContext
+import os
+import urllib.parse
+import platform
+import csv
+from sqlalchemy import func, select
+
+router = APIRouter()
+
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+JWT_SECRET = os.environ.get('JWT_SECRET', 'change-me')
+JWT_ALGO = 'HS256'
+
+security = HTTPBearer()
+
+
+async def get_current_user(creds: HTTPAuthorizationCredentials = Depends(security)):
+    token = creds.credentials
+    try:
+        payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGO])
+        return payload
+    except JWTError:
+        raise HTTPException(status_code=401, detail='Invalid or expired token')
+
+
+async def get_current_admin(user: dict = Depends(get_current_user)):
+    if not user or user.get('role') != 'admin':
+        raise HTTPException(status_code=403, detail='Admin privileges required')
+    return user
+
+
+class LoginIn(BaseModel):
+    username: str
+    password: str
+
+
+class SettingsIn(BaseModel):
+    driver: Optional[str] = 'ODBC Driver 18 for SQL Server'
+    host: str
+    port: Optional[int] = 1433
+    database: str
+    username: Optional[str] = None
+    password: Optional[str] = None
+    trusted: Optional[bool] = False
+    encrypt: Optional[bool] = False
+
+
+def create_token(data: dict):
+    to_encode = data.copy()
+    to_encode.update({"exp": datetime.datetime.utcnow() + datetime.timedelta(hours=8)})
+    return jwt.encode(to_encode, JWT_SECRET, algorithm=JWT_ALGO)
+
+
+@router.post('/login')
+async def login(payload: LoginIn):
+    query = db.users.select().where(db.users.c.username == payload.username)
+    user = await db.database.fetch_one(query)
+    if not user:
+        # fallback allow admin/admin for initial access
+        if payload.username == 'admin' and payload.password == 'admin':
+            token = create_token({'sub': 'admin', 'role': 'admin'})
+            return {'token': token, 'role': 'admin'}
+        raise HTTPException(status_code=401, detail='Invalid credentials')
+    if not pwd_context.verify(payload.password, user['password_hash']):
+        raise HTTPException(status_code=401, detail='Invalid credentials')
+    token = create_token({'sub': user['username'], 'role': user.get('role', 'user')})
+    return {'token': token, 'role': user.get('role', 'user')}
+
+
+@router.get('/diag')
+async def diag():
+    info = {'db_url': getattr(db, 'DATABASE_URL', None)}
+    try:
+        q = select(func.count(db.users.c.id))
+        cnt = await db.database.fetch_val(q)
+        info['users_count'] = cnt
+    except Exception:
+        pass
+    return info
+
+
+@router.post('/import-data')
+async def import_data(files: Optional[List[UploadFile]] = File(None)):
+    if not files:
+        return {'success': True, 'rows_imported': 0}
+    total = 0
+    for f in files:
+        content = await f.read()
+        s = content.decode('utf-8')
+        reader = csv.DictReader(s.splitlines())
+        rows = 0
+        for r in reader:
+            await db.database.execute(db.report_data.insert().values(source_file=f.filename, json_payload=json.dumps(r), created_at=datetime.datetime.utcnow()))
+            rows += 1
+        await db.database.execute(db.import_log.insert().values(file_name=f.filename, rows_imported=rows, status='success', started_at=datetime.datetime.utcnow(), finished_at=datetime.datetime.utcnow()))
+        total += rows
+    return {'success': True, 'rows_imported': total}
+
+
+@router.post('/run-report')
+async def run_report(report_name: str = Form(...)):
+    cnt = await db.database.fetch_val(select(func.count(db.report_data.c.id)))
+    await db.database.execute(db.report_log.insert().values(report_name=report_name, parameters='', status='success', started_at=datetime.datetime.utcnow(), finished_at=datetime.datetime.utcnow()))
+    return {'report': report_name, 'rows': cnt}
+
+
+def _build_connection_url(s: SettingsIn) -> str:
+    driver = s.driver or 'ODBC Driver 18 for SQL Server'
+    driver_q = urllib.parse.quote_plus(driver)
+    userinfo = ''
+    if getattr(s, 'trusted', False):
+        userinfo = ''
+    else:
+        if s.username:
+            userinfo = urllib.parse.quote_plus(s.username)
+            if s.password:
+                userinfo += ':' + urllib.parse.quote_plus(s.password)
+            userinfo += '@'
+    if '\\' in s.host:
+        hostport = s.host
+    else:
+        hostport = f"{s.host}:{s.port or 1433}"
+    params = f"driver={driver_q}"
+    if s.encrypt:
+        params += '&Encrypt=yes'
+    if getattr(s, 'trusted', False):
+        params += '&trusted_connection=yes'
+    return f"mssql+pyodbc://{userinfo}{hostport}/{s.database}?{params}"
+
+
+SETTINGS_PATH = os.path.join(os.path.dirname(__file__), '..', 'instance', 'settings.json')
+
+
+@router.post('/settings/save')
+async def save_settings(payload: SettingsIn, _admin=Depends(get_current_admin)):
+    os.makedirs(os.path.dirname(SETTINGS_PATH), exist_ok=True)
+    with open(SETTINGS_PATH, 'w', encoding='utf-8') as f:
+        json.dump(payload.dict(), f, indent=2)
+    new_url = _build_connection_url(payload)
+    await db.switch_database(new_url)
+    return {'ok': True, 'url': new_url}
+
+
+@router.get('/settings')
+async def get_settings(_admin=Depends(get_current_admin)):
+    if not os.path.exists(SETTINGS_PATH):
+        raise HTTPException(status_code=404, detail='No settings')
+    with open(SETTINGS_PATH, 'r', encoding='utf-8') as f:
+        return json.load(f)
+
+
+@router.post('/settings/test')
+async def test_settings(payload: SettingsIn, _admin=Depends(get_current_admin)):
+    url = _build_connection_url(payload)
+    try:
+        import pyodbc
+        available_drivers = [d for d in pyodbc.drivers()]
+    except Exception:
+        return {"ok": False, "message": "pyodbc not installed on the server. Install pyodbc and ODBC driver to test."}
+    conn_parts = []
+    chosen_driver = payload.driver
+    try:
+        if payload.driver not in available_drivers:
+            fallback = None
+            for cand in ["ODBC Driver 18 for SQL Server", "ODBC Driver 17 for SQL Server"]:
+                if cand in available_drivers:
+                    fallback = cand
+                    break
+            if fallback:
+                chosen_driver = fallback
+    except Exception:
+        chosen_driver = payload.driver
+    conn_parts.append(f"DRIVER={{{chosen_driver}}}")
+    if '\\' in payload.host:
+        conn_parts.append(f"SERVER={payload.host}")
+    else:
+        conn_parts.append(f"SERVER={payload.host},{payload.port or 1433}")
+    conn_parts.append(f"DATABASE={payload.database}")
+    if payload.username:
+        conn_parts.append(f"UID={payload.username}")
+    if payload.password:
+        conn_parts.append(f"PWD={payload.password}")
+    if payload.encrypt:
+        conn_parts.append('Encrypt=yes')
+    conn_str = ';'.join(conn_parts)
+    try:
+        cn = pyodbc.connect(conn_str, timeout=5)
+        cn.close()
+        return {"ok": True, "message": "Connection successful", "url": url, "used_driver": chosen_driver}
+    except Exception as e:
+        return {"ok": False, "message": f"Connection failed: {str(e)}", "url": url}
+
+
+@router.get('/settings/scan-local')
+async def scan_local_instances(_admin=Depends(get_current_admin)):
+    if platform.system() != 'Windows':
+        return {"ok": False, "message": "Local instance scanning is supported on Windows only."}
+    instances = []
+    try:
+        import winreg
+        base_key = r"SOFTWARE\Microsoft\Microsoft SQL Server\Instance Names\SQL"
+        try:
+            with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, base_key) as key:
+                i = 0
+                while True:
+                    try:
+                        name, val, _ = winreg.EnumValue(key, i)
+                        instances.append(name)
+                        i += 1
+                    except OSError:
+                        break
+        except Exception:
+            instances = []
+        host_variants = []
+        local_name = os.getenv('COMPUTERNAME') or 'localhost'
+        host_variants.extend(['localhost', '127.0.0.1', '(local)', f'{local_name}'])
+        host_variants.append('(localdb)\\MSSQLLocalDB')
+        for inst in instances:
+            if '\\' in inst:
+                host_variants.append(inst)
+            else:
+                host_variants.append(f"{local_name}\\{inst}")
+        host_variants.append(f"{local_name}\\SQLEXPRESS")
+        seen = set(); uniq = []
+        for v in host_variants:
+            if v not in seen:
+                seen.add(v); uniq.append(v)
+        return {"ok": True, "instances": uniq}
+    except Exception as e:
+        return {"ok": False, "message": str(e)}
+
+
+@router.post('/settings/list-databases')
+async def list_databases(payload: SettingsIn, _admin=Depends(get_current_admin)):
+    try:
+        import pyodbc
+    except Exception:
+        return {"ok": False, "message": "pyodbc not installed on the server."}
+    # Build a simple master DB connection string then query sys.databases
+    try:
+        chosen_driver = payload.driver
+        drivers = pyodbc.drivers()
+        if chosen_driver not in drivers and drivers:
+            for cand in ("ODBC Driver 18 for SQL Server", "ODBC Driver 17 for SQL Server"):
+                if cand in drivers:
+                    chosen_driver = cand
+                    break
+            else:
+                chosen_driver = drivers[0]
+        parts = [f"DRIVER={{{chosen_driver}}}"]
+        if '\\' in payload.host:
+            parts.append(f"SERVER={payload.host}")
+        else:
+            parts.append(f"SERVER={payload.host},{payload.port or 1433}")
+        parts.append("DATABASE=master")
+        if payload.username:
+            parts.append(f"UID={payload.username}")
+        if payload.password:
+            parts.append(f"PWD={payload.password}")
+        if payload.encrypt:
+            parts.append('Encrypt=yes')
+        if getattr(payload, 'trusted', False):
+            parts.append('Trusted_Connection=yes')
+        conn_str = ';'.join(parts)
+        cn = pyodbc.connect(conn_str, timeout=8)
+        cur = cn.cursor()
+        cur.execute("SELECT name FROM sys.databases ORDER BY name;")
+        rows = [r[0] for r in cur.fetchall()]
+        cur.close()
+        cn.close()
+        return {"ok": True, "databases": rows}
+    except Exception as e:
+        return {"ok": False, "message": str(e)}
+
+
+@router.post('/create-user')
+async def create_user(username: str = Form(...), password: str = Form(...), role: str = Form('user'), _admin=Depends(get_current_admin)):
+    hashed = pwd_context.hash(password)
+    res = await db.database.execute(db.users.insert().values(username=username, password_hash=hashed, role=role, created_at=datetime.datetime.utcnow()))
+    return {'message': 'User created', 'user_id': res}
+
+
+@router.get('/users')
+async def list_users(_admin=Depends(get_current_admin)):
+    query = db.users.select()
+    users = await db.database.fetch_all(query)
+    return [{'id': u['id'], 'username': u['username'], 'role': u['role'], 'created_at': str(u['created_at']) if u['created_at'] else None} for u in users]
+
+
+from fastapi import APIRouter, HTTPException, Depends, UploadFile, File, Form
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from pydantic import BaseModel
+from typing import Optional, List
+from . import db
+import datetime
+import json
+from jose import JWTError, jwt
+from passlib.context import CryptContext
+import os
+import urllib.parse
+import platform
+import csv
+from sqlalchemy import func, select
+
+router = APIRouter()
+
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+JWT_SECRET = os.environ.get('JWT_SECRET', 'change-me')
+JWT_ALGO = 'HS256'
+
+# Auth security
+security = HTTPBearer()
+
+
+async def get_current_user(creds: HTTPAuthorizationCredentials = Depends(security)):
+    token = creds.credentials
+    try:
+        payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGO])
+        return payload
+    except JWTError:
+        raise HTTPException(status_code=401, detail='Invalid or expired token')
+
+
+async def get_current_admin(user: dict = Depends(get_current_user)):
+    if not user or user.get('role') != 'admin':
+        raise HTTPException(status_code=403, detail='Admin privileges required')
+    return user
+
+
+class LoginIn(BaseModel):
+    username: str
+    password: str
+
+
+class SettingsIn(BaseModel):
+    driver: Optional[str] = 'ODBC Driver 18 for SQL Server'
+    host: str
+    port: Optional[int] = 1433
+    database: str
+    username: Optional[str] = None
+    password: Optional[str] = None
+    trusted: Optional[bool] = False
+    encrypt: Optional[bool] = False
+
+
+def create_token(data: dict):
+    to_encode = data.copy()
+    to_encode.update({"exp": datetime.datetime.utcnow() + datetime.timedelta(hours=8)})
+    return jwt.encode(to_encode, JWT_SECRET, algorithm=JWT_ALGO)
+
+
+@router.post('/login')
+async def login(payload: LoginIn):
+    query = db.users.select().where(db.users.c.username == payload.username)
+    user = await db.database.fetch_one(query)
+    if not user:
+        # fallback allow admin/admin for initial access
+        if payload.username == 'admin' and payload.password == 'admin':
+            token = create_token({'sub': 'admin', 'role': 'admin'})
+            return {'token': token, 'role': 'admin'}
+        raise HTTPException(status_code=401, detail='Invalid credentials')
+    if not pwd_context.verify(payload.password, user['password_hash']):
+        raise HTTPException(status_code=401, detail='Invalid credentials')
+    token = create_token({'sub': user['username'], 'role': user.get('role', 'user')})
+    return {'token': token, 'role': user.get('role', 'user')}
+
+
+@router.get('/diag')
+async def diag():
+    info = {'db_url': getattr(db, 'DATABASE_URL', None)}
+    try:
+        q = select(func.count(db.users.c.id))
+        cnt = await db.database.fetch_val(q)
+        info['users_count'] = cnt
+    except Exception:
+        pass
+    return info
+
+
+@router.post('/import-data')
+async def import_data(files: Optional[List[UploadFile]] = File(None)):
+    if not files:
+        return {'success': True, 'rows_imported': 0}
+    total = 0
+    for f in files:
+        content = await f.read()
+        s = content.decode('utf-8')
+        reader = csv.DictReader(s.splitlines())
+        rows = 0
+        for r in reader:
+            await db.database.execute(db.report_data.insert().values(source_file=f.filename, json_payload=json.dumps(r), created_at=datetime.datetime.utcnow()))
+            rows += 1
+        await db.database.execute(db.import_log.insert().values(file_name=f.filename, rows_imported=rows, status='success', started_at=datetime.datetime.utcnow(), finished_at=datetime.datetime.utcnow()))
+        total += rows
+    return {'success': True, 'rows_imported': total}
+
+
+@router.post('/run-report')
+async def run_report(report_name: str = Form(...)):
+    cnt = await db.database.fetch_val(select(func.count(db.report_data.c.id)))
+    await db.database.execute(db.report_log.insert().values(report_name=report_name, parameters='', status='success', started_at=datetime.datetime.utcnow(), finished_at=datetime.datetime.utcnow()))
+    return {'report': report_name, 'rows': cnt}
+
+
+def _build_connection_url(s: SettingsIn) -> str:
+    driver = s.driver or 'ODBC Driver 18 for SQL Server'
+    driver_q = urllib.parse.quote_plus(driver)
+    userinfo = ''
+    if getattr(s, 'trusted', False):
+        userinfo = ''
+    else:
+        if s.username:
+            userinfo = urllib.parse.quote_plus(s.username)
+            if s.password:
+                userinfo += ':' + urllib.parse.quote_plus(s.password)
+            userinfo += '@'
+    if '\\' in s.host:
+        hostport = s.host
+    else:
+        hostport = f"{s.host}:{s.port or 1433}"
+    params = f"driver={driver_q}"
+    if s.encrypt:
+        params += '&Encrypt=yes'
+    if getattr(s, 'trusted', False):
+        params += '&trusted_connection=yes'
+    return f"mssql+pyodbc://{userinfo}{hostport}/{s.database}?{params}"
+
+
+SETTINGS_PATH = os.path.join(os.path.dirname(__file__), '..', 'instance', 'settings.json')
+
+
+@router.post('/settings/save')
+async def save_settings(payload: SettingsIn, _admin=Depends(get_current_admin)):
+    os.makedirs(os.path.dirname(SETTINGS_PATH), exist_ok=True)
+    with open(SETTINGS_PATH, 'w', encoding='utf-8') as f:
+        json.dump(payload.dict(), f, indent=2)
+    new_url = _build_connection_url(payload)
+    await db.switch_database(new_url)
+    return {'ok': True, 'url': new_url}
+
+
+@router.get('/settings')
+async def get_settings(_admin=Depends(get_current_admin)):
+    if not os.path.exists(SETTINGS_PATH):
+        raise HTTPException(status_code=404, detail='No settings')
+    with open(SETTINGS_PATH, 'r', encoding='utf-8') as f:
+        return json.load(f)
+
+
+@router.post('/settings/test')
+async def test_settings(payload: SettingsIn, _admin=Depends(get_current_admin)):
+    url = _build_connection_url(payload)
+    try:
+        import pyodbc
+        available_drivers = [d for d in pyodbc.drivers()]
+    except Exception:
+        return {"ok": False, "message": "pyodbc not installed on the server. Install pyodbc and ODBC driver to test."}
+    conn_parts = []
+    chosen_driver = payload.driver
+    try:
+        if payload.driver not in available_drivers:
+            fallback = None
+            for cand in ["ODBC Driver 18 for SQL Server", "ODBC Driver 17 for SQL Server"]:
+                if cand in available_drivers:
+                    fallback = cand
+                    break
+            if fallback:
+                chosen_driver = fallback
+    except Exception:
+        chosen_driver = payload.driver
+    conn_parts.append(f"DRIVER={{{chosen_driver}}}")
+    if '\\' in payload.host:
+        conn_parts.append(f"SERVER={payload.host}")
+    else:
+        conn_parts.append(f"SERVER={payload.host},{payload.port or 1433}")
+    conn_parts.append(f"DATABASE={payload.database}")
+    if payload.username:
+        conn_parts.append(f"UID={payload.username}")
+    if payload.password:
+        conn_parts.append(f"PWD={payload.password}")
+    if payload.encrypt:
+        conn_parts.append('Encrypt=yes')
+    conn_str = ';'.join(conn_parts)
+    try:
+        cn = pyodbc.connect(conn_str, timeout=5)
+        cn.close()
+        return {"ok": True, "message": "Connection successful", "url": url, "used_driver": chosen_driver}
+    except Exception as e:
+        return {"ok": False, "message": f"Connection failed: {str(e)}", "url": url}
+
+
+@router.get('/settings/scan-local')
+async def scan_local_instances(_admin=Depends(get_current_admin)):
+    if platform.system() != 'Windows':
+        return {"ok": False, "message": "Local instance scanning is supported on Windows only."}
+    instances = []
+    try:
+        import winreg
+        base_key = r"SOFTWARE\Microsoft\Microsoft SQL Server\Instance Names\SQL"
+        try:
+            with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, base_key) as key:
+                i = 0
+                while True:
+                    try:
+                        name, val, _ = winreg.EnumValue(key, i)
+                        instances.append(name)
+                        i += 1
+                    except OSError:
+                        break
+        except Exception:
+            instances = []
+        host_variants = []
+        local_name = os.getenv('COMPUTERNAME') or 'localhost'
+        host_variants.extend(['localhost', '127.0.0.1', '(local)', f'{local_name}'])
+        host_variants.append('(localdb)\\MSSQLLocalDB')
+        for inst in instances:
+            if '\\' in inst:
+                host_variants.append(inst)
+            else:
+                host_variants.append(f"{local_name}\\{inst}")
+        host_variants.append(f"{local_name}\\SQLEXPRESS")
+        seen = set(); uniq = []
+        for v in host_variants:
+            if v not in seen:
+                seen.add(v); uniq.append(v)
+        return {"ok": True, "instances": uniq}
+    except Exception as e:
+        return {"ok": False, "message": str(e)}
+
+
+@router.post('/settings/list-databases')
+async def list_databases(payload: SettingsIn, _admin=Depends(get_current_admin)):
+    try:
+        import pyodbc
+    except Exception:
+        return {"ok": False, "message": "pyodbc not installed on the server."}
+    # Build a simple master DB connection string then query sys.databases
+    try:
+        chosen_driver = payload.driver
+        drivers = pyodbc.drivers()
+        if chosen_driver not in drivers and drivers:
+            for cand in ("ODBC Driver 18 for SQL Server", "ODBC Driver 17 for SQL Server"):
+                if cand in drivers:
+                    chosen_driver = cand
+                    break
+            else:
+                chosen_driver = drivers[0]
+        parts = [f"DRIVER={{{chosen_driver}}}"]
+        if '\\' in payload.host:
+            parts.append(f"SERVER={payload.host}")
+        else:
+            parts.append(f"SERVER={payload.host},{payload.port or 1433}")
+        parts.append("DATABASE=master")
+        if payload.username:
+            parts.append(f"UID={payload.username}")
+        if payload.password:
+            parts.append(f"PWD={payload.password}")
+        if payload.encrypt:
+            parts.append('Encrypt=yes')
+        if getattr(payload, 'trusted', False):
+            parts.append('Trusted_Connection=yes')
+        conn_str = ';'.join(parts)
+        cn = pyodbc.connect(conn_str, timeout=8)
+        cur = cn.cursor()
+        cur.execute("SELECT name FROM sys.databases ORDER BY name;")
+        rows = [r[0] for r in cur.fetchall()]
+        cur.close()
+        cn.close()
+        return {"ok": True, "databases": rows}
+    except Exception as e:
+        return {"ok": False, "message": str(e)}
+
+
+@router.post('/create-user')
+async def create_user(username: str = Form(...), password: str = Form(...), role: str = Form('user'), _admin=Depends(get_current_admin)):
+    hashed = pwd_context.hash(password)
+    res = await db.database.execute(db.users.insert().values(username=username, password_hash=hashed, role=role, created_at=datetime.datetime.utcnow()))
+    return {'message': 'User created', 'user_id': res}
+
+    @router.get('/diag')
+    async def diag():
+        info = { 'db_url': getattr(db, 'DATABASE_URL', None) }
+        try:
+            q = select(func.count(db.users.c.id))
+            cnt = await db.database.fetch_val(q)
+            info['users_count'] = cnt
+        except Exception:
+            pass
+        return info
+
+
+    @router.post('/import-data')
+    async def import_data(files: Optional[List[UploadFile]] = File(None)):
+        if not files:
+            return {'success': True, 'rows_imported': 0}
+        total = 0
+        import csv
+        for f in files:
+            content = await f.read()
+            s = content.decode('utf-8')
+            reader = csv.DictReader(s.splitlines())
+            rows = 0
+            for r in reader:
+                await db.database.execute(db.report_data.insert().values(source_file=f.filename, json_payload=json.dumps(r), created_at=datetime.datetime.utcnow()))
+                rows += 1
+            await db.database.execute(db.import_log.insert().values(file_name=f.filename, rows_imported=rows, status='success', started_at=datetime.datetime.utcnow(), finished_at=datetime.datetime.utcnow()))
+            total += rows
+        return {'success': True, 'rows_imported': total}
+
+
+    @router.post('/run-report')
+    async def run_report(report_name: str = Form(...)):
+        cnt = await db.database.fetch_val(select(func.count(db.report_data.c.id)))
+        await db.database.execute(db.report_log.insert().values(report_name=report_name, parameters='', status='success', started_at=datetime.datetime.utcnow(), finished_at=datetime.datetime.utcnow()))
+        return {'report': report_name, 'rows': cnt}
+
+
+    @router.post('/settings/save')
+    async def save_settings(payload: SettingsIn, _admin=Depends(get_current_admin)):
+        os.makedirs(os.path.dirname(SETTINGS_PATH), exist_ok=True)
+        with open(SETTINGS_PATH, 'w', encoding='utf-8') as f:
+            json.dump(payload.dict(), f, indent=2)
+        new_url = _build_connection_url(payload)
+        await db.switch_database(new_url)
+        return {'ok': True, 'url': new_url}
+
+
+    @router.get('/settings')
+    async def get_settings(_admin=Depends(get_current_admin)):
+        if not os.path.exists(SETTINGS_PATH):
+            raise HTTPException(status_code=404, detail='No settings')
+        with open(SETTINGS_PATH, 'r', encoding='utf-8') as f:
+            return json.load(f)
+
+
+    @router.post('/settings/test')
+    async def test_settings(payload: SettingsIn, _admin=Depends(get_current_admin)):
+        url = _build_connection_url(payload)
+        try:
+            import pyodbc
+            available_drivers = [d for d in pyodbc.drivers()]
+        except Exception:
+            return {"ok": False, "message": "pyodbc not installed on the server. Install pyodbc and ODBC driver to test."}
+        conn_parts = []
+        chosen_driver = payload.driver
+        try:
+            if payload.driver not in available_drivers:
+                fallback = None
+                for cand in ["ODBC Driver 18 for SQL Server", "ODBC Driver 17 for SQL Server"]:
+                    if cand in available_drivers:
+                        fallback = cand
+                        break
+                if fallback:
+                    chosen_driver = fallback
+        except Exception:
+            chosen_driver = payload.driver
+        conn_parts.append(f"DRIVER={{{chosen_driver}}}")
+        if '\\' in payload.host:
+            conn_parts.append(f"SERVER={payload.host}")
+        else:
+            conn_parts.append(f"SERVER={payload.host},{payload.port or 1433}")
+        conn_parts.append(f"DATABASE={payload.database}")
+        if payload.username:
+            conn_parts.append(f"UID={payload.username}")
+        if payload.password:
+            conn_parts.append(f"PWD={payload.password}")
+        if payload.encrypt:
+            conn_parts.append('Encrypt=yes')
+        conn_str = ';'.join(conn_parts)
+        try:
+            cn = pyodbc.connect(conn_str, timeout=5)
+            cn.close()
+            return {"ok": True, "message": "Connection successful", "url": url, "used_driver": chosen_driver}
+        except Exception as e:
+            return {"ok": False, "message": f"Connection failed: {str(e)}", "url": url}
+
+
+    @router.get('/settings/scan-local')
+    async def scan_local_instances(_admin=Depends(get_current_admin)):
+        if platform.system() != 'Windows':
+            return {"ok": False, "message": "Local instance scanning is supported on Windows only."}
+        instances = []
+        try:
+            import winreg
+            base_key = r"SOFTWARE\Microsoft\Microsoft SQL Server\Instance Names\SQL"
+            try:
+                with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, base_key) as key:
+                    i = 0
+                    while True:
+                        try:
+                            name, val, _ = winreg.EnumValue(key, i)
+                            instances.append(name)
+                            i += 1
+                        except OSError:
+                            break
+            except Exception:
+                instances = []
+            host_variants = []
+            local_name = os.getenv('COMPUTERNAME') or 'localhost'
+            host_variants.extend(['localhost', '127.0.0.1', '(local)', f'{local_name}'])
+            host_variants.append('(localdb)\\MSSQLLocalDB')
+            for inst in instances:
+                if '\\' in inst:
+                    host_variants.append(inst)
+                else:
+                    host_variants.append(f"{local_name}\\{inst}")
+            host_variants.append(f"{local_name}\\SQLEXPRESS")
+            seen = set(); uniq = []
+            for v in host_variants:
+                if v not in seen:
+                    seen.add(v); uniq.append(v)
+            return {"ok": True, "instances": uniq}
+        except Exception as e:
+            return {"ok": False, "message": str(e)}
+
+
+    @router.post('/create-user')
+    async def create_user(username: str = Form(...), password: str = Form(...), role: str = Form('user'), _admin=Depends(get_current_admin)):
+        hashed = pwd_context.hash(password)
+        res = await db.database.execute(db.users.insert().values(username=username, password_hash=hashed, role=role, created_at=datetime.datetime.utcnow()))
+        return {'message': 'User created', 'user_id': res}
+from fastapi import APIRouter, HTTPException, Depends, UploadFile, File, Form
+from pydantic import BaseModel
+from typing import Optional, List
+from . import db
+import datetime
+import json
+from jose import JWTError, jwt
+from passlib.context import CryptContext
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from fastapi import Security
+
+router = APIRouter()
+
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+JWT_SECRET = 'change-me'
+JWT_ALGO = 'HS256'
+
+# Auth security
+security = HTTPBearer()
+
+async def get_current_user(creds: HTTPAuthorizationCredentials = Depends(security)):
+    token = creds.credentials
+    try:
+        payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGO])
+        return payload
+    except JWTError:
+        raise HTTPException(status_code=401, detail='Invalid or expired token')
+
+
+async def get_current_admin(user: dict = Depends(get_current_user)):
+    if not user or user.get('role') != 'admin':
+        raise HTTPException(status_code=403, detail='Admin privileges required')
+    return user
+
+
+class LoginIn(BaseModel):
+    username: str
+    password: str
+
+
+def create_token(data: dict):
+    to_encode = data.copy()
+    to_encode.update({"exp": datetime.datetime.utcnow() + datetime.timedelta(hours=8)})
+    return jwt.encode(to_encode, JWT_SECRET, algorithm=JWT_ALGO)
+
+
+def verify_token(token: str):
+    try:
+        data = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGO])
+        return data
+    except JWTError:
+        return None
+
+
+@router.post('/login')
+async def login(payload: LoginIn):
+    # simple check against users table
+    query = db.users.select().where(db.users.c.username == payload.username)
+    user = await db.database.fetch_one(query)
+    if not user:
+        # fallback allow admin/admin if seeding not happened
+        if payload.username == 'admin' and payload.password == 'admin':
+            token = create_token({'sub': 'admin', 'role': 'admin'})
+            return {'token': token, 'role': 'admin'}
+        raise HTTPException(status_code=401, detail='Invalid credentials')
+    if not pwd_context.verify(payload.password, user['password_hash']):
+        raise HTTPException(status_code=401, detail='Invalid credentials')
+    token = create_token({'sub': user['username'], 'role': user.get('role','user')})
+    return {'token': token, 'role': user.get('role','user')}
+
+
+@router.get('/diag')
+async def diag():
+    info = { 'db_url': db.DATABASE_URL }
+    try:
+        q = db.users.count()
+    except Exception:
+        pass
+    return info
+
+
+@router.post('/import-data')
+async def import_data(files: Optional[List[UploadFile]] = File(None)):
+    if not files:
+        return {'success': True, 'rows_imported': 0}
+    total = 0
+    for f in files:
+        content = await f.read()
+        s = content.decode('utf-8')
+        import csv
+        reader = csv.DictReader(s.splitlines())
+        rows = 0
+        for r in reader:
+            await db.database.execute(db.report_data.insert().values(source_file=f.filename, json_payload=json.dumps(r), created_at=datetime.datetime.utcnow()))
+            rows += 1
+        await db.database.execute(db.import_log.insert().values(file_name=f.filename, rows_imported=rows, status='success', started_at=datetime.datetime.utcnow(), finished_at=datetime.datetime.utcnow()))
+        total += rows
+    return {'success': True, 'rows_imported': total}
+
+
+@router.post('/run-report')
+async def run_report(report_name: str = Form(...)):
+    # naive: return count
+    cnt = await db.database.fetch_val(db.report_data.count())
+    await db.database.execute(db.report_log.insert().values(report_name=report_name, parameters='', status='success', started_at=datetime.datetime.utcnow(), finished_at=datetime.datetime.utcnow()))
+    return {'report': report_name, 'rows': cnt}
+
+
+class SettingsIn(BaseModel):
+    host: str
+    port: Optional[int] = 1433
+    database: str
+    username: Optional[str] = None
+    password: Optional[str] = None
+    trusted: Optional[bool] = False
+
+
+@router.post('/settings/save')
+async def save_settings(payload: SettingsIn):
+    os.makedirs(os.path.dirname(db.SETTINGS_PATH), exist_ok=True)
+    with open(db.SETTINGS_PATH, 'w', encoding='utf-8') as f:
+        json.dump(payload.dict(), f, indent=2)
+    # switch DB
+    new_url = db.get_database_url_from_settings()
+    await db.switch_database(new_url)
+    return {'ok': True, 'url': new_url}
+
+
+@router.get('/settings')
+async def get_settings():
+    if not os.path.exists(db.SETTINGS_PATH):
+        raise HTTPException(status_code=404, detail='No settings')
+        with open(db.SETTINGS_PATH, 'r', encoding='utf-8') as f:
+            return json.load(f)
+
+
+@router.post('/create-user')
+async def create_user(username: str = Form(...), password: str = Form(...), role: str = Form('user')):
+    hashed = pwd_context.hash(password)
+    res = await db.database.execute(db.users.insert().values(username=username, password_hash=hashed, role=role, created_at=datetime.datetime.utcnow()))
+    return {'message': 'User created', 'user_id': res}
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
+from passlib.context import CryptContext
+from . import db
+from pydantic import BaseModel
+import datetime
+import shutil
+import os
+import json
+import urllib.parse
+from typing import Optional
+import platform
+from sqlalchemy import func, select
+
+router = APIRouter()
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
+class LoginIn(BaseModel):
+    username: str
+    password: str
+
+class ImportResponse(BaseModel):
+    success: bool
+    rows_imported: int
+
+
+@router.post('/login')
+async def login(payload: LoginIn):
+    try:
+        # Always allow admin/admin as a fallback if not found in DB
+        query = db.users.select().where(db.users.c.username == payload.username)
+        user = await db.database.fetch_one(query)
+        if not user and payload.username == 'admin' and payload.password == 'admin':
+            # Try to seed admin user if not present and use fallback token
+            try:
+                from .db import users, database
+                hashed = pwd_context.hash('admin')
+                await database.execute(users.insert().values(username='admin', password_hash=hashed, role='admin', created_at=datetime.datetime.utcnow()))
+            except Exception:
+                pass
+            # Return token for admin fallback
+            token = create_token({'sub': 'admin', 'role': 'admin'})
+            return {'token': token, 'role': 'admin'}
+        if not user:
+            raise HTTPException(status_code=401, detail="Invalid credentials")
+        if not pwd_context.verify(payload.password, user['password_hash']):
+            raise HTTPException(status_code=401, detail="Invalid credentials")
+        # Return token for authenticated user
+        user_role = user['role'] if 'role' in user._mapping else 'user'
+        token = create_token({'sub': user['username'], 'role': user_role})
+        return {'token': token, 'role': user_role}
+    except HTTPException:
+        # re-raise HTTP errors unchanged
+        raise
+    except Exception as e:
+        # Log traceback to server stdout for debugging and return JSON error
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get('/diag')
+async def diag():
+    """Diagnostic endpoint: shows settings.json presence/content and a quick DB check."""
+    info = {}
+    try:
+        info['settings_exists'] = os.path.exists(SETTINGS_PATH)
+        if info['settings_exists']:
+            with open(SETTINGS_PATH, 'r', encoding='utf-8') as f:
+                info['settings'] = json.load(f)
+        else:
+            info['settings'] = None
+    except Exception as e:
+        info['settings_error'] = str(e)
+    try:
+        # quick DB check: count users
+        query = select(func.count(db.users.c.id))
+        cnt = await db.database.fetch_val(query)
+        info['users_count'] = cnt
+    except Exception as e:
+        info['db_error'] = str(e)
+    return info
+
+@router.post('/import-data')
+async def import_data(files: Optional[list[UploadFile]] = File(None)):
+    # If no files were uploaded, treat as zero-row successful import
+    if not files:
+        return {"success": True, "rows_imported": 0}
+
+    total_rows = 0
+    import datetime
+    import csv
+    import json
+
+    for f in files:
+        if not f.filename.lower().endswith('.csv'):
+            continue  # Skip non-CSV files
+
+        started_at = datetime.datetime.utcnow()
+        rows_imported = 0
+        status = 'success'
+        error_msg = None
+
+        try:
+            # Read CSV content
+            content = await f.read()
+            content_str = content.decode('utf-8')
+            reader = csv.DictReader(content_str.splitlines())
+
+            # Insert each row with file_name added
+            for row in reader:
+                row['file_name'] = f.filename
+                json_payload = json.dumps(row)
+                query = db.report_data.insert().values(
+                    source_file=f.filename,
+                    file_name=f.filename,
+                    json_payload=json_payload,
+                    created_at=datetime.datetime.utcnow()
+                )
+                await db.database.execute(query)
+                rows_imported += 1
+
+        except Exception as e:
+            status = 'failed'
+            error_msg = str(e)
+
+        finished_at = datetime.datetime.utcnow()
+
+        # Log the import
+        log_query = db.import_log.insert().values(
+            file_name=f.filename,
+            rows_imported=rows_imported,
+            status=status,
+            started_at=started_at,
+            finished_at=finished_at
+        )
+        await db.database.execute(log_query)
+
+        total_rows += rows_imported
+
+    return {"success": True, "rows_imported": total_rows}
+
+@router.post('/run-report')
+async def run_report(report_name: str):
+    # naive report runner: return count of report_data
+    query = select(func.count(db.report_data.c.id))
+    cnt = await db.database.fetch_val(query)
+    log_query = db.report_log.insert().values(report_name=report_name, parameters='', status='success', started_at=datetime.datetime.utcnow(), finished_at=datetime.datetime.utcnow())
+    await db.database.execute(log_query)
+    return {"report": report_name, "rows": cnt}
+
+@router.get('/bi-report')
+async def bi_report():
+    # placeholder for BI integration
+    return {"message": "BI endpoint - connect Power BI to your DB directly."}
+
+
+class SettingsIn(BaseModel):
+    driver: Optional[str] = 'ODBC Driver 18 for SQL Server'
+    host: str
+    port: Optional[int] = 1433
+    database: str
+    username: Optional[str] = None
+    password: Optional[str] = None
+    trusted: Optional[bool] = False
+    encrypt: Optional[bool] = False
+
+class CreateUserIn(BaseModel):
+    username: str
+    password: str
+
+
+def _build_connection_url(s: SettingsIn) -> str:
+    # Build SQLAlchemy URL for mssql+pyodbc
+    driver = s.driver or 'ODBC Driver 18 for SQL Server'
+    driver_q = urllib.parse.quote_plus(driver)
+    userinfo = ''
+    # If using Trusted Connection do not include userinfo
+    if getattr(s, 'trusted', False):
+        userinfo = ''
+    else:
+        if s.username:
+            userinfo = urllib.parse.quote_plus(s.username)
+            if s.password:
+                userinfo += ':' + urllib.parse.quote_plus(s.password)
+            userinfo += '@'
+    # If host contains an instance name (backslash), use it directly and do not append port
+    if '\\' in s.host:
+        hostport = s.host
+    else:
+        hostport = f"{s.host}:{s.port or 1433}"
+    params = f"driver={driver_q}"
+    if s.encrypt:
+        params += '&Encrypt=yes'
+    # If trusted connection was requested, add query param for SQLAlchemy/pyodbc
+    if getattr(s, 'trusted', False):
+        params += '&trusted_connection=yes'
+    return f"mssql+pyodbc://{userinfo}{hostport}/{s.database}?{params}"
+
+
+SETTINGS_PATH = os.path.join(os.path.dirname(__file__), '..', 'instance', 'settings.json')
+
+
+@router.post('/settings/test')
+async def test_settings(payload: SettingsIn):
+    """Test DB connection using pyodbc if available; otherwise return guidance."""
+    url = _build_connection_url(payload)
+    # Try to import pyodbc and attempt connection
+    try:
+        import pyodbc
+        available_drivers = [d for d in pyodbc.drivers()]
+    except Exception:
+        return {"ok": False, "message": "pyodbc not installed on the server. Install pyodbc and ODBC driver to test."}
+
+    # Build a pyodbc connection string (DSN-less)
+    conn_parts = []
+    # Choose driver: prefer requested, otherwise try to pick an installed SQL Server ODBC driver
+    chosen_driver = payload.driver
+    try:
+        if payload.driver not in available_drivers:
+            # prefer ODBC Driver 18, then 17, then any name containing 'SQL Server' or 'ODBC Driver'
+            fallback = None
+            for cand in ["ODBC Driver 18 for SQL Server", "ODBC Driver 17 for SQL Server"]:
+                if cand in available_drivers:
+                    fallback = cand
+                    break
+            if not fallback:
+                for cand in available_drivers:
+                    if 'SQL Server' in cand or 'ODBC Driver' in cand:
+                        fallback = cand
+                        break
+            if fallback:
+                chosen_driver = fallback
+            else:
+                return {"ok": False, "message": f"Requested driver '{payload.driver}' not found. Installed drivers: {available_drivers}. Install Microsoft ODBC Driver for SQL Server or specify a different driver.", "installed_drivers": available_drivers}
+    except Exception:
+        chosen_driver = payload.driver
+
+    conn_parts.append(f"DRIVER={{{chosen_driver}}}")
+    # For named instances, pass the instance name without a port
+    if '\\' in payload.host:
+        conn_parts.append(f"SERVER={payload.host}")
+    else:
+        conn_parts.append(f"SERVER={payload.host},{payload.port or 1433}")
+    conn_parts.append(f"DATABASE={payload.database}")
+    if payload.username:
+        conn_parts.append(f"UID={payload.username}")
+    if payload.password:
+        conn_parts.append(f"PWD={payload.password}")
+    if payload.encrypt:
+        conn_parts.append('Encrypt=yes')
+
+    conn_str = ';'.join(conn_parts)
+    try:
+        cn = pyodbc.connect(conn_str, timeout=5)
+        cn.close()
+        return {"ok": True, "message": "Connection successful", "url": url, "used_driver": chosen_driver}
+    except Exception as e:
+        msg = str(e)
+        # detect common 'database not found' messages from SQL Server
+        missing_db = False
+        if 'Cannot open database' in msg or 'Cannot open database' in msg or 'database does not exist' in msg or 'Login failed for user' in msg and 'does not exist' in msg:
+            missing_db = True
+        # more robust check: if message mentions requested database
+        if payload.database and payload.database in msg:
+            # heuristics: if the database name appears in the error, treat as missing database
+            if 'Cannot open database' in msg or 'does not exist' in msg or 'requested by the login' in msg:
+                missing_db = True
+
+        return {"ok": False, "message": f"Connection failed: {msg}", "url": url, "missing_database": missing_db}
+
+
+
+@router.get('/settings/scan-local')
+async def scan_local_instances():
+    """Return a list of likely local SQL Server instance hostnames/instance-names.
+
+    On Windows this reads the registry key that maps instance names to internal ids.
+    The response is JSON: { ok: True, instances: [ ... ] } or { ok: False, message: '...' }
+    """
+    # Only supported on Windows for now
+    if platform.system() != 'Windows':
+        return {"ok": False, "message": "Local instance scanning is supported on Windows only."}
+    instances = []
+    try:
+        # Import winreg lazily so code still runs on non-Windows import
+        import winreg
+        base_key = r"SOFTWARE\Microsoft\Microsoft SQL Server\Instance Names\SQL"
+        try:
+            with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, base_key) as key:
+                i = 0
+                while True:
+                    try:
+                        name, val, _ = winreg.EnumValue(key, i)
+                        # name is the instance short name, e.g. SQLEXPRESS
+                        instances.append(name)
+                        i += 1
+                    except OSError:
+                        break
+        except Exception:
+            # registry key not present or permission denied -> return empty list
+            instances = []
+
+        # Build hostname variants: local machine name + instance, common local aliases
+        host_variants = []
+        local_name = os.getenv('COMPUTERNAME') or 'localhost'
+        # common entries
+        host_variants.extend(['localhost', '127.0.0.1', '(local)', f'{local_name}'])
+        # localdb common instance
+        host_variants.append('(localdb)\\MSSQLLocalDB')
+        # instance-based names
+        for inst in instances:
+            # if instance name already contains backslash, keep as-is; otherwise prefix with machine name
+            if '\\' in inst:
+                host_variants.append(inst)
+            else:
+                host_variants.append(f"{local_name}\\{inst}")
+
+        # add a common SQLEXPRESS candidate
+        host_variants.append(f"{local_name}\\SQLEXPRESS")
+
+        # dedupe preserving order
+        seen = set()
+        uniq = []
+        for v in host_variants:
+            if v not in seen:
+                seen.add(v)
+                uniq.append(v)
+
+        return {"ok": True, "instances": uniq}
+    except Exception as e:
+        return {"ok": False, "message": str(e)}
+
+
+
+class DbListIn(BaseModel):
+    driver: Optional[str] = 'ODBC Driver 18 for SQL Server'
+    host: str
+    port: Optional[int] = 1433
+    username: Optional[str] = None
+    password: Optional[str] = None
+    trusted: Optional[bool] = False
+    encrypt: Optional[bool] = False
+
+
+def _build_pyodbc_conn_str_for_master(payload: DbListIn) -> str:
+    # Build DSN-less pyodbc connection string targeting master DB
+    try:
+        import pyodbc as _pyodbc
+        avail = _pyodbc.drivers()
+    except Exception:
+        avail = []
+    chosen_driver = payload.driver
+    if chosen_driver not in avail and avail:
+        # fallback prefer 18,17
+        for cand in ("ODBC Driver 18 for SQL Server", "ODBC Driver 17 for SQL Server"):
+            if cand in avail:
+                chosen_driver = cand
+                break
+        else:
+            chosen_driver = avail[0]
+
+    parts = [f"DRIVER={{{chosen_driver}}}"]
+    if '\\' in payload.host:
+        parts.append(f"SERVER={payload.host}")
+    else:
+        parts.append(f"SERVER={payload.host},{payload.port or 1433}")
+    parts.append("DATABASE=master")
+    if payload.username:
+        parts.append(f"UID={payload.username}")
+    if payload.password:
+        parts.append(f"PWD={payload.password}")
+    if payload.encrypt:
+        parts.append('Encrypt=yes')
+    if getattr(payload, 'trusted', False):
+        parts.append('Trusted_Connection=yes')
+    return ';'.join(parts)
+
+
+@router.post('/settings/list-databases')
+async def list_databases(payload: DbListIn):
+    """Return a list of database names available on the target server (connects to master)."""
+    try:
+        import pyodbc
+    except Exception:
+        return {"ok": False, "message": "pyodbc not installed on the server."}
+
+    conn_str = _build_pyodbc_conn_str_for_master(payload)
+    try:
+        cn = pyodbc.connect(conn_str, timeout=8)
+        cur = cn.cursor()
+        cur.execute("SELECT name FROM sys.databases ORDER BY name;")
+        rows = [r[0] for r in cur.fetchall()]
+        cur.close()
+        cn.close()
+        return {"ok": True, "databases": rows}
+    except Exception as e:
+        return {"ok": False, "message": str(e), "conn_str": conn_str}
+
+
+
+@router.post('/settings/create-db')
+async def create_database(payload: SettingsIn):
+    """Create the named database on the target server using pyodbc by connecting to master.
+
+    Returns success/failure message.
+    """
+    try:
+        import pyodbc
+    except Exception:
+        return {"ok": False, "message": "pyodbc not installed on the server. Install pyodbc and ODBC driver to create database."}
+
+    # build a DSN-less connection to the master database
+    conn_parts = []
+    # Choose driver as above when creating database
+    chosen_driver = payload.driver
+    try:
+        import pyodbc as _pyodbc
+        avail = _pyodbc.drivers()
+        if payload.driver not in avail:
+            fallback = None
+            for cand in ["ODBC Driver 18 for SQL Server", "ODBC Driver 17 for SQL Server"]:
+                if cand in avail:
+                    fallback = cand
+                    break
+            if not fallback:
+                for cand in avail:
+                    if 'SQL Server' in cand or 'ODBC Driver' in cand:
+                        fallback = cand
+                        break
+            if fallback:
+                chosen_driver = fallback
+            else:
+                return {"ok": False, "message": f"Requested driver '{payload.driver}' not found. Installed drivers: {avail}."}
+    except Exception:
+        pass
+
+    conn_parts.append(f"DRIVER={{{chosen_driver}}}")
+    # handle named instance
+    if '\\' in payload.host:
+        conn_parts.append(f"SERVER={payload.host}")
+    else:
+        conn_parts.append(f"SERVER={payload.host},{payload.port or 1433}")
+    # connect to master to create the database
+    conn_parts.append(f"DATABASE=master")
+
+    # If trusted, do NOT include UID/PWD at all, only Trusted_Connection
+    if getattr(payload, 'trusted', False):
+        conn_parts.append('Trusted_Connection=yes')
+    else:
+        if payload.username:
+            conn_parts.append(f"UID={payload.username}")
+        if payload.password:
+            conn_parts.append(f"PWD={payload.password}")
+    if payload.encrypt:
+        conn_parts.append('Encrypt=yes')
+
+    conn_str = ';'.join(conn_parts)
+    try:
+        cn = pyodbc.connect(conn_str, timeout=10)
+        cn.autocommit = True
+        cur = cn.cursor()
+        # Use safe identifier quoting
+        dbname = payload.database.replace(']', ']]')
+        sql = f"CREATE DATABASE [{dbname}]"
+        cur.execute(sql)
+        cur.close()
+        cn.close()
+        return {"ok": True, "message": f"Database '{payload.database}' created successfully."}
+    except Exception as e:
+        return {"ok": False, "message": f"Failed to create database: {str(e)}"}
+
+
+@router.post('/settings/save')
+async def save_settings(payload: SettingsIn):
+    os.makedirs(os.path.dirname(SETTINGS_PATH), exist_ok=True)
+    data = payload.dict()
+    # Note: storing plaintext password for demo only. Use vaults in production.
+    with open(SETTINGS_PATH, 'w', encoding='utf-8') as f:
+        json.dump(data, f, indent=2)
+    # Build SQLAlchemy URL and attempt to switch database live
+    new_url = _build_connection_url(payload)
+    try:
+        await db.switch_database(new_url)
+        return {"ok": True, "message": "Settings saved and database switched", "path": SETTINGS_PATH, "url": new_url}
+    except Exception as e:
+        return {"ok": False, "message": f"Settings saved but failed to switch DB: {str(e)}", "path": SETTINGS_PATH, "url": new_url}
+
+
+@router.get('/settings')
+async def get_settings():
+    if not os.path.exists(SETTINGS_PATH):
+        raise HTTPException(status_code=404, detail='No settings saved')
+    with open(SETTINGS_PATH, 'r', encoding='utf-8') as f:
+        data = json.load(f)
+    return data
+
+
+@router.post('/create-user')
+async def create_user(payload: CreateUserIn):
+    # Only allow admin to create users (in a real app, check session/token)
+    # For demo, assume admin is logged in if this endpoint is called
+    try:
+        # Check if user already exists
+        query = db.users.select().where(db.users.c.username == payload.username)
+        existing = await db.database.fetch_one(query)
+        if existing:
+            raise HTTPException(status_code=400, detail="User already exists")
+        # Hash password and insert
+        hashed = pwd_context.hash(payload.password)
+        insert_query = db.users.insert().values(username=payload.username, password_hash=hashed, created_at=datetime.datetime.utcnow())
+        user_id = await db.database.execute(insert_query)
+        return {"message": "User created", "user_id": user_id}
+    except HTTPException:
+        raise
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
