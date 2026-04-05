@@ -4,34 +4,35 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>ReportApp</title>
-  <link rel="stylesheet" href="/static/styles.css?v=8">
+  <link rel="stylesheet" href="/static/styles.css?v=11">
   <!-- Tailwind via CDN for rapid UI improvements -->
   <script src="https://cdn.tailwindcss.com"></script>
-  <!-- Premium font -->
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700;800&display=swap" rel="stylesheet">
+  <!-- Premium fonts -->
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Sora:wght@500;600;700;800&display=swap" rel="stylesheet">
   <style>
     :root{
       --glass-bg: rgba(255,255,255,0.72);
-      --accent-1: #667eea;
-      --accent-2: #764ba2;
-      --muted: #6b7280;
+      --accent-1: #0f766e;
+      --accent-2: #c2410c;
+      --muted: #475569;
     }
     html,body{height:100%;}
     body{
       --glass-bg: rgba(255,255,255,0.72);
-      --accent-1: #667eea;
-      --accent-2: #764ba2;
-      --muted: #6b7280;
+      --accent-1: #0f766e;
+      --accent-2: #c2410c;
+      --muted: #475569;
       --bg-page: #ffffff;
       --bg-panel: #ffffff;
       --text-primary: #0f172a;
-      --text-muted: #6b7280;
+      --text-muted: #475569;
       -webkit-font-smoothing:antialiased;
       -moz-osx-font-smoothing:grayscale;
       padding: 28px;
-      font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial;
+      font-family: 'Manrope', 'Segoe UI', sans-serif;
       background-color: var(--bg-page);
       color: var(--text-primary);
+      transition: background-color 0.25s ease, color 0.25s ease;
     }
     .dark {
       --glass-bg: rgba(8,10,15,0.72);
@@ -42,6 +43,125 @@
       --bg-panel: #071226;
       --text-primary: #e6eef8;
       --text-muted: #9aa4b2;
+    }
+    html.dark body {
+      background-color: var(--bg-page);
+      color: var(--text-primary);
+    }
+    html.dark .section-card {
+      background: linear-gradient(180deg, rgba(15,23,42,0.92), rgba(7,14,26,0.92)) !important;
+      border-color: rgba(148,163,184,0.18) !important;
+      box-shadow: 0 18px 45px rgba(3,7,18,0.65) !important;
+      color: var(--text-primary) !important;
+    }
+    html.dark .section-card * {
+      color: inherit !important;
+    }
+    html.dark .bg-white {
+      background-color: rgba(15,23,42,0.85) !important;
+      color: var(--text-primary) !important;
+    }
+    html.dark .bg-gray-100 {
+      background-color: rgba(30,41,59,0.78) !important;
+      color: var(--text-primary) !important;
+    }
+    html.dark .bg-gray-600 {
+      background-color: rgba(79,70,229,0.7) !important;
+    }
+    html.dark .btn-secondary,
+    html.dark .modal-content .btn-secondary {
+      background: rgba(30,41,59,0.78) !important;
+      color: var(--text-primary) !important;
+      border-color: rgba(148,163,184,0.32) !important;
+    }
+    html.dark .btn-primary,
+    html.dark .modal-content .btn-primary {
+      box-shadow: 0 14px 30px rgba(79,70,229,0.45);
+    }
+    html.dark input,
+    html.dark select,
+    html.dark textarea {
+      background: rgba(15,23,42,0.82);
+      color: #e2e8f0;
+      border-color: rgba(148,163,184,0.3);
+      box-shadow: 0 8px 22px rgba(2,6,15,0.5);
+    }
+    html.dark input:focus,
+    html.dark select:focus,
+    html.dark textarea:focus {
+      border-color: #a5b4fc;
+      box-shadow: 0 0 0 3px rgba(99,102,241,0.35);
+    }
+    html.dark .modal {
+      background: rgba(2,6,14,0.78);
+    }
+    html.dark .modal-content {
+      background: linear-gradient(180deg, rgba(12,18,33,0.96), rgba(6,10,20,0.96));
+      border-color: rgba(129,140,248,0.35);
+      color: var(--text-primary);
+      box-shadow: 0 24px 55px rgba(2,6,15,0.7);
+    }
+    html.dark .modal-content h3 {
+      color: #c7d2fe;
+    }
+    html.dark label,
+    html.dark #dbStatus,
+    html.dark .text-gray-600,
+    html.dark .text-slate-600,
+    html.dark .text-gray-500,
+    html.dark .text-slate-500 {
+      color: var(--text-muted) !important;
+    }
+    html.dark #themeToggleBtn,
+    html.dark #forceDarkBtn {
+      background: rgba(30,41,59,0.78) !important;
+      color: #f8fafc !important;
+      border: 1px solid rgba(99,102,241,0.35) !important;
+      box-shadow: 0 10px 25px rgba(5,10,22,0.45);
+    }
+    /* Global dark-mode overrides for entire page */
+    html.dark {
+      background: #0b1220;
+    }
+    html.dark #app {
+      background: transparent;
+    }
+    html.dark h2,
+    html.dark h3,
+    html.dark h4,
+    html.dark p,
+    html.dark span,
+    html.dark div {
+      color: var(--text-primary);
+    }
+    html.dark .text-xl,
+    html.dark .text-3xl,
+    html.dark .font-semibold {
+      color: var(--text-primary) !important;
+    }
+    html.dark #currentUser {
+      color: #a5b4fc !important;
+    }
+    html.dark .rounded-lg,
+    html.dark .rounded-xl,
+    html.dark .shadow-sm,
+    html.dark .shadow-md {
+      background-color: rgba(15,23,42,0.88) !important;
+      border-color: rgba(99,102,241,0.2) !important;
+    }
+    html.dark button[class*="bg-sky"],
+    html.dark button[class*="bg-pink"],
+    html.dark button[class*="bg-yellow"],
+    html.dark button[class*="bg-rose"],
+    html.dark button[class*="bg-amber"] {
+      box-shadow: 0 8px 22px rgba(5,10,22,0.55);
+    }
+    html.dark #userActionsSection h3,
+    html.dark #adminSection h3 {
+      color: #cbd5e1 !important;
+    }
+    html.dark #recentActivity {
+      color: var(--text-muted);
     }
     .modal {
       display: none;
@@ -150,124 +270,475 @@
     /* Subtle input styling across page */
     input, select, textarea { border-radius: 10px; border: 1px solid rgba(15,23,42,0.06); padding: 10px 12px; }
     input:focus, select:focus, textarea:focus { box-shadow: 0 6px 18px rgba(102,126,234,0.08); border-color: var(--accent-1); }
+
+    /* Homepage redesign */
+    body::before,
+    body::after {
+      content: '';
+      position: fixed;
+      z-index: -1;
+      pointer-events: none;
+      border-radius: 999px;
+      filter: blur(70px);
+      opacity: 0.34;
+    }
+    body::before {
+      width: 460px;
+      height: 460px;
+      top: -140px;
+      right: -110px;
+      background: radial-gradient(circle at center, rgba(15,118,110,0.92), rgba(15,118,110,0));
+    }
+    body::after {
+      width: 540px;
+      height: 540px;
+      bottom: -170px;
+      left: -150px;
+      background: radial-gradient(circle at center, rgba(194,65,12,0.72), rgba(194,65,12,0));
+    }
+
+    #app {
+      max-width: 1360px;
+      margin: 0 auto;
+      padding: 28px;
+      border-radius: 26px;
+      border: 1px solid rgba(15,118,110,0.16);
+      background:
+        linear-gradient(160deg, rgba(255,255,255,0.93), rgba(247,250,252,0.9)),
+        repeating-linear-gradient(135deg, rgba(15,118,110,0.03) 0 12px, rgba(255,255,255,0) 12px 24px);
+      box-shadow: 0 28px 60px rgba(2,6,23,0.12);
+      backdrop-filter: blur(12px);
+    }
+
+    .top-nav {
+      position: sticky;
+      top: 16px;
+      z-index: 30;
+      border-radius: 18px;
+      border: 1px solid rgba(15,118,110,0.22);
+      background: linear-gradient(120deg, rgba(255,255,255,0.9), rgba(236,253,245,0.84));
+      box-shadow: 0 16px 38px rgba(15,118,110,0.14);
+    }
+
+    .top-nav .brand .logo {
+      background: linear-gradient(135deg, #0f766e, #115e59) !important;
+      border-radius: 14px;
+    }
+
+    .top-nav .brand > div > div:first-child {
+      font-family: 'Sora', 'Manrope', sans-serif;
+      letter-spacing: -0.35px;
+      color: #0f172a !important;
+    }
+
+    .search-input {
+      border-radius: 14px;
+      border: 1px solid rgba(15,118,110,0.25);
+      background: rgba(255,255,255,0.88);
+    }
+
+    .icon-btn,
+    #logoutBtn {
+      border-radius: 12px !important;
+    }
+
+    .home-layout {
+      display: grid;
+      grid-template-columns: 1.35fr 1fr;
+      gap: 22px;
+      margin-top: 26px;
+    }
+
+    #userActionsSection,
+    #adminSection {
+      margin-top: 0 !important;
+      border-radius: 20px;
+      border: 1px solid rgba(15,118,110,0.14);
+      background: linear-gradient(180deg, rgba(255,255,255,0.94), rgba(248,250,252,0.92));
+      box-shadow: 0 14px 34px rgba(2,6,23,0.08);
+      padding: 22px;
+    }
+
+    #adminSection {
+      border-color: rgba(194,65,12,0.16);
+      background: linear-gradient(180deg, rgba(255,251,235,0.92), rgba(255,255,255,0.96));
+    }
+
+    .home-ribbon {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 10px;
+      margin: 12px 0 22px;
+    }
+
+    .hr-chip {
+      border-radius: 12px;
+      padding: 11px 12px;
+      border: 1px solid rgba(15,118,110,0.2);
+      background: rgba(255,255,255,0.88);
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .hr-chip-label {
+      font-size: 11px;
+      color: #64748b;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      font-weight: 700;
+    }
+
+    .hr-chip-value {
+      font-size: 14px;
+      font-weight: 700;
+      color: #0f172a;
+    }
+
+    .welcome-banner {
+      background: linear-gradient(130deg, #0f766e 0%, #0f766e 45%, #c2410c 100%) !important;
+      border-radius: 20px;
+      box-shadow: 0 14px 34px rgba(15,118,110,0.28);
+    }
+
+    .wb-greeting {
+      font-family: 'Sora', 'Manrope', sans-serif;
+      font-size: 26px;
+      letter-spacing: -0.6px;
+    }
+
+    .action-cards-grid {
+      gap: 14px;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    button.action-card {
+      border-radius: 18px;
+      padding: 18px;
+      box-shadow: 0 12px 26px rgba(2,6,23,0.18);
+    }
+
+    .action-card--blue {
+      background: linear-gradient(145deg, #0ea5a3, #115e59) !important;
+    }
+
+    .action-card--pink {
+      background: linear-gradient(145deg, #0284c7, #0f766e) !important;
+    }
+
+    .action-card--amber {
+      background: linear-gradient(145deg, #f59e0b, #c2410c) !important;
+    }
+
+    .admin-cards-grid {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    #adminSection .dash-section-heading {
+      margin-top: 0 !important;
+    }
+
+    .activity-panel {
+      max-height: 280px;
+      border-radius: 16px;
+    }
+
+    .admin-layout {
+      display: grid;
+      gap: 14px;
+    }
+
+    .admin-cluster {
+      border: 1px solid rgba(15,118,110,0.14);
+      border-radius: 14px;
+      padding: 14px;
+      background: rgba(255,255,255,0.88);
+    }
+
+    .admin-cluster-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      margin-bottom: 10px;
+      padding-bottom: 8px;
+      border-bottom: 1px dashed rgba(15,118,110,0.18);
+    }
+
+    .admin-cluster-title {
+      font-size: 13px;
+      font-weight: 800;
+      color: #0f172a;
+      letter-spacing: 0.03em;
+      text-transform: uppercase;
+    }
+
+    .admin-cluster-sub {
+      font-size: 11px;
+      color: #64748b;
+      font-weight: 600;
+    }
+
+    .admin-cluster-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    .admin-cluster-grid .admin-card {
+      min-height: 106px;
+    }
+
+    @media (max-width: 1180px) {
+      .home-layout {
+        grid-template-columns: 1fr;
+      }
+      .action-cards-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    @media (max-width: 760px) {
+      body { padding: 12px; }
+      #app { padding: 16px; border-radius: 18px; }
+      .home-ribbon { grid-template-columns: 1fr; }
+      .admin-cards-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .admin-cluster-grid { grid-template-columns: 1fr; }
+      .top-nav { position: static; }
+    }
+
+    html.dark #app {
+      border-color: rgba(45,212,191,0.24);
+      background: linear-gradient(170deg, rgba(8,17,28,0.95), rgba(5,12,22,0.94));
+      box-shadow: 0 26px 70px rgba(0,0,0,0.56);
+    }
+
+    html.dark .top-nav {
+      border-color: rgba(45,212,191,0.3);
+      background: linear-gradient(120deg, rgba(7,25,32,0.92), rgba(8,47,73,0.76));
+      box-shadow: 0 14px 32px rgba(0,0,0,0.5);
+    }
+
+    html.dark .top-nav .brand > div > div:first-child {
+      color: #e2e8f0 !important;
+    }
+
+    html.dark #userActionsSection,
+    html.dark #adminSection {
+      border-color: rgba(45,212,191,0.22);
+      background: linear-gradient(180deg, rgba(9,18,34,0.93), rgba(7,14,26,0.92));
+    }
+
+    html.dark #adminSection {
+      border-color: rgba(251,146,60,0.25);
+    }
+
+    html.dark .admin-cluster {
+      background: rgba(15,23,42,0.72);
+      border-color: rgba(45,212,191,0.2);
+    }
+
+    html.dark .admin-cluster-head {
+      border-color: rgba(45,212,191,0.22);
+    }
+
+    html.dark .admin-cluster-title {
+      color: #e2e8f0;
+    }
+
+    html.dark .admin-cluster-sub {
+      color: #94a3b8;
+    }
+
+    html.dark .hr-chip {
+      border-color: rgba(45,212,191,0.24);
+      background: rgba(15,23,42,0.72);
+    }
+
+    html.dark .hr-chip-value {
+      color: #e2e8f0;
+    }
   </style>
   </head>
   <body>
-    <span class="text-3xl">📊</span>
-            <span class="text-xl font-semibold">Dashboard</span>
-          </h2>
-          <p style="margin: 5px 0; color: #666;">
-            Welcome, <strong id="currentUser" style="color: #667eea;"></strong>!
-          </p>
+    <div id="app">
+      <div class="top-nav" style="margin-bottom: 28px;">
+        <div class="brand" style="display:flex; align-items:center; gap:12px;">
+          <div class="logo">📊</div>
+          <div>
+            <div style="font-weight:800; font-size:18px; color:var(--accent-1);">ReportApp</div>
+            <div style="font-size:12px; color:var(--muted);">Welcome, <strong id="currentUser" style="color:var(--accent-1);"></strong></div>
+          </div>
         </div>
-          <div style="display: flex; gap: 10px; align-items: center;">
-              <div id="dbStatus" class="db-status-badge"></div>
-              <div id="adminHeaderControls" style="display:none; gap:8px; align-items:center;">
-                <button id="showAdminSettingsBtn" class="flex items-center gap-2 px-3 py-2 bg-sky-400 text-gray-900 rounded-md font-medium shadow-sm" title="Configure separate report database">🗄️ Report DB</button>
-                <button id="showReportDefsBtn" class="flex items-center gap-2 px-3 py-2 bg-amber-400 text-gray-900 rounded-md font-medium shadow-sm" title="Manage report definitions">🗂️ Report Definitions</button>
-              </div>
-              <button id="themeToggleBtn" class="px-3 py-2 bg-gray-100 text-gray-800 rounded-md" title="Toggle theme">🌙</button>
-              <button id="logoutBtn" class="bg-gray-600 text-white px-3 py-2 rounded-md font-semibold">🚪 Logout</button>
+
+        <div class="nav-actions" style="display:flex; align-items:center; gap:10px;">
+          <input id="globalSearch" class="search-input" placeholder="Search reports, tables, users..." />
+          <datalist id="userOptions"></datalist>
+          <div id="dbStatus" class="db-status-badge"></div>
+          <button id="forceDarkBtn" class="icon-btn" title="Enable full dark mode">🌑</button>
+          <button id="themeToggleBtn" class="icon-btn" title="Toggle theme">🌙</button>
+          <div class="avatar" title="Account">
+            <span id="currentInitial">A</span>
+          </div>
+          <button id="logoutBtn" class="btn-secondary">Logout</button>
+        </div>
+      </div>
+
+      <!-- Metric Details Modal -->
+      <div id="metricDetailModal" class="modal">
+        <div class="modal-content" style="max-width:900px; width:92%; max-height:80vh; overflow:auto;">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+            <h3 id="metricDetailTitle" style="margin:0;">Details</h3>
+            <button id="closeMetricDetailBtn" class="px-3 py-1 bg-gray-200 rounded">Close</button>
+          </div>
+          <div id="metricDetailBody">
+            <div id="metricDetailMsg" style="color:#666; padding:8px 0;">Loading...</div>
+            <div id="metricDetailContent" style="margin-top:8px;"></div>
+          </div>
         </div>
       </div>
 
       <!-- User Actions (for all logged-in users) -->
+      <div class="home-layout">
       <div id="userActionsSection" style="margin-top: 30px;">
-        <h3 style="font-size: 18px; color: #555; margin-bottom: 15px; display: flex; align-items: center; gap: 8px;">
-          <span style="font-size: 20px;">🎯</span> Quick Actions
-        </h3>
-        <div class="section-card p-5 bg-white rounded-lg shadow-sm" style="padding: 20px;">
-          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px;">
-            <button id="showImportBtnUser" class="flex items-center gap-2 px-4 py-3 bg-sky-500 text-white rounded-lg font-semibold shadow-sm" title="Upload CSV/Excel into SQL Server">
-                <span class="text-lg">📤</span> Import Data
-              </button>
-              <button id="showReportBtn" class="flex items-center gap-2 px-4 py-3 bg-pink-500 text-white rounded-lg font-semibold shadow-sm" title="Generate reports from data">
-                <span class="text-lg">📊</span> Generate Report
-              </button>
-              <button id="showPowerBIBtn" class="flex items-center gap-2 px-4 py-3 bg-yellow-400 text-white rounded-lg font-semibold shadow-sm" title="View Power BI Dashboard">
-                <span class="text-lg">📈</span> Power BI Dashboard
-              </button>
+        <!-- Welcome Banner -->
+        <div class="welcome-banner" style="margin-bottom: 28px;">
+          <div class="wb-orb wb-orb-1"></div>
+          <div class="wb-orb wb-orb-2"></div>
+          <div class="wb-inner">
+            <div>
+              <div class="wb-greeting">Welcome back! 👋</div>
+              <div class="wb-sub">Your workspace is ready — pick an action to get started.</div>
+            </div>
+            <div class="wb-icon-badge">📊</div>
           </div>
+        </div>
+        <div class="home-ribbon">
+          <div class="hr-chip">
+            <span class="hr-chip-label">Workspace</span>
+            <span class="hr-chip-value">Operations Hub</span>
+          </div>
+          <div class="hr-chip">
+            <span class="hr-chip-label">Status</span>
+            <span class="hr-chip-value">Ready for imports and reports</span>
+          </div>
+          <div class="hr-chip">
+            <span class="hr-chip-label">Focus</span>
+            <span class="hr-chip-value">Fast execution and clean outputs</span>
+          </div>
+        </div>
+        <div class="dash-section-heading">
+          <span class="dash-section-icon">🎯</span>
+          <span>Quick Actions</span>
+        </div>
+        <div class="action-cards-grid">
+          <button id="showImportBtnUser" class="action-card action-card--blue" title="Upload CSV/Excel into SQL Server">
+            <div class="ac-icon-wrap">📤</div>
+            <div class="ac-body">
+              <div class="ac-title">Import Data</div>
+              <div class="ac-desc">Upload CSV &amp; Excel into SQL Server</div>
+            </div>
+            <div class="ac-arrow">→</div>
+          </button>
+          <button id="showReportBtn" class="action-card action-card--pink" title="Generate reports from data">
+            <div class="ac-icon-wrap">📊</div>
+            <div class="ac-body">
+              <div class="ac-title">Generate Report</div>
+              <div class="ac-desc">Run stored procedure reports</div>
+            </div>
+            <div class="ac-arrow">→</div>
+          </button>
+          <button id="showPowerBIBtn" class="action-card action-card--amber" title="View Power BI Dashboard">
+            <div class="ac-icon-wrap">📈</div>
+            <div class="ac-body">
+              <div class="ac-title">Power BI Dashboard</div>
+              <div class="ac-desc">Interactive analytics &amp; charts</div>
+            </div>
+            <div class="ac-arrow">→</div>
+          </button>
         </div>
       </div>
       
       <div id="adminSection" style="display:none">
-        <!-- Summary Statistics (Admin Only) -->
-        <div style="margin-bottom: 30px;">
-          <h3 style="font-size: 18px; color: #555; margin-bottom: 15px; display: flex; align-items: center; gap: 8px;">
-            <span style="font-size: 20px;">📈</span> Statistics Overview
-          </h3>
-          <div id="summaryRow" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px;">
-            <div class="section-card p-6 rounded-xl shadow-md" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 24px; border-radius: 12px; box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);">
-              <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 12px;">
-                <span style="font-size: 32px; opacity: 0.9;">👥</span>
-                <div style="font-size: 14px; opacity: 0.9; font-weight: 500;">Total Users</div>
-              </div>
-              <div id="summaryUsers" style="font-size: 36px; font-weight: 700; letter-spacing: -1px;">-</div>
-              <div style="font-size: 12px; opacity: 0.8; margin-top: 4px;">Active accounts</div>
+        <div class="dash-section-heading" style="margin-top: 32px;">
+          <span class="dash-section-icon">⚙️</span>
+          <span>Admin Controls</span>
+          <span class="dash-section-badge">Admin</span>
+        </div>
+        <div class="admin-layout">
+          <div class="admin-cluster">
+            <div class="admin-cluster-head">
+              <div class="admin-cluster-title">System Configuration</div>
+              <div class="admin-cluster-sub">Database and integration setup</div>
             </div>
-            
-            <div class="section-card p-6 rounded-xl shadow-md" style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); color: white; padding: 24px; border-radius: 12px; box-shadow: 0 4px 12px rgba(240, 147, 251, 0.3);">
-              <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 12px;">
-                <span style="font-size: 32px; opacity: 0.9;">📥</span>
-                <div style="font-size: 14px; opacity: 0.9; font-weight: 500;">Data Imported</div>
-              </div>
-              <div id="summaryImports" style="font-size: 36px; font-weight: 700; letter-spacing: -1px;">-</div>
-              <div id="summaryImportsLast" style="font-size: 12px; opacity: 0.8; margin-top: 4px;">No imports yet</div>
-            </div>
-            
-            <div class="section-card p-6 rounded-xl shadow-md" style="background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); color: white; padding: 24px; border-radius: 12px; box-shadow: 0 4px 12px rgba(79, 172, 254, 0.3);">
-              <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 12px;">
-                <span style="font-size: 32px; opacity: 0.9;">📋</span>
-                <div style="font-size: 14px; opacity: 0.9; font-weight: 500;">Reports Generated</div>
-              </div>
-              <div id="summaryReports" style="font-size: 36px; font-weight: 700; letter-spacing: -1px;">-</div>
-              <div id="summaryReportsLast" style="font-size: 12px; opacity: 0.8; margin-top: 4px;">No reports yet</div>
-            </div>
-            
-            <div class="section-card p-6 rounded-xl shadow-md" style="background: linear-gradient(135deg, #fa709a 0%, #fee140 100%); color: white; padding: 24px; border-radius: 12px; box-shadow: 0 4px 12px rgba(250, 112, 154, 0.3);">
-              <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 12px;">
-                <span style="font-size: 32px; opacity: 0.9;">🗄️</span>
-                <div style="font-size: 14px; opacity: 0.9; font-weight: 500;">Data Tables</div>
-              </div>
-              <div id="summaryTables" style="font-size: 36px; font-weight: 700; letter-spacing: -1px;">-</div>
-              <div style="font-size: 12px; opacity: 0.8; margin-top: 4px;">Available tables</div>
+            <div class="admin-cluster-grid">
+              <button id="showAdminSettingsBtn" class="admin-card admin-card--sky" title="Configure report database connections">
+                <span class="adm-icon">🗄️</span>
+                <span class="adm-label">Report DB Settings</span>
+              </button>
+              <button id="showPowerBISettingsBtn" class="admin-card admin-card--yellow" title="Configure Power BI Dashboard">
+                <span class="adm-icon">⚙️</span>
+                <span class="adm-label">Power BI Settings</span>
+              </button>
             </div>
           </div>
-        </div>
-        
-        <h3 style="font-size: 18px; color: #555; margin-bottom: 15px; display: flex; align-items: center; gap: 8px;">
-          <span style="font-size: 20px;">⚙️</span> Admin Controls
-        </h3>
-            <div class="section-card p-5 bg-white rounded-lg shadow-sm" style="padding: 20px;">
-          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px;">
-              <!-- Report DB Settings moved to header for prominent admin access -->
-            <button id="showCreateUserBtn" class="flex items-center gap-2 px-4 py-3 bg-pink-500 text-white rounded-lg font-semibold shadow-sm" title="Create a new application user">
-              <span style="font-size: 18px;">👤</span> Create User
-            </button>
-            <button id="showUsersBtn" class="flex items-center gap-2 px-4 py-3 bg-rose-400 text-white rounded-lg font-semibold shadow-sm" title="View and manage users">
-              <span style="font-size: 18px;">👥</span> Manage Users
-            </button>
-            <button id="showPowerBISettingsBtn" class="flex items-center gap-2 px-4 py-3 bg-yellow-400 text-white rounded-lg font-semibold shadow-sm" title="Configure Power BI Dashboard">
-              <span style="font-size: 18px;">⚙️</span> Power BI Settings
-            </button>
+
+          <div class="admin-cluster">
+            <div class="admin-cluster-head">
+              <div class="admin-cluster-title">User Administration</div>
+              <div class="admin-cluster-sub">Create accounts and control access</div>
+            </div>
+            <div class="admin-cluster-grid">
+              <button id="showCreateUserBtn" class="admin-card admin-card--pink" title="Create a new application user">
+                <span class="adm-icon">👤</span>
+                <span class="adm-label">Create User</span>
+              </button>
+              <button id="showUsersBtn" class="admin-card admin-card--rose" title="View and manage users">
+                <span class="adm-icon">👥</span>
+                <span class="adm-label">Manage Users</span>
+              </button>
+              <button id="showPermissionsBtn" class="admin-card admin-card--purple" title="Manage user permissions">
+                <span class="adm-icon">🔐</span>
+                <span class="adm-label">Permissions</span>
+              </button>
+              <button id="showMobileSFABtn" class="admin-card admin-card--indigo" title="Manage Mobile SFA App">
+                <span class="adm-icon">📱</span>
+                <span class="adm-label">Mobile SFA</span>
+              </button>
+            </div>
+          </div>
+
+          <div class="admin-cluster">
+            <div class="admin-cluster-head">
+              <div class="admin-cluster-title">Reporting Controls</div>
+              <div class="admin-cluster-sub">Definitions and analytics governance</div>
+            </div>
+            <div class="admin-cluster-grid">
+              <button id="showReportDefsBtn2" class="admin-card admin-card--amber" title="Manage report definitions">
+                <span class="adm-icon">🗂️</span>
+                <span class="adm-label">Report Definitions</span>
+              </button>
+            </div>
           </div>
         </div>
         
         <!-- Recent Activity -->
-        <div style="margin-top: 30px;">
-          <h3 style="font-size: 18px; color: #555; margin-bottom: 15px; display: flex; align-items: center; gap: 8px;">
-            <span style="font-size: 20px;">🕒</span> Recent Activity
-          </h3>
-          <div class="section-card p-5 bg-white rounded-lg shadow-sm" style="padding: 20px;">
-            <div id="recentActivity" style="max-height: 300px; overflow-y: auto;">
-              <div style="text-align: center; color: #999; padding: 40px 20px;">
-                <span style="font-size: 48px; opacity: 0.3;">📭</span>
-                <p style="margin-top: 10px;">No recent activity</p>
+        <div style="margin-top: 36px;">
+          <div class="dash-section-heading">
+            <span class="dash-section-icon">🕒</span>
+            <span>Recent Activity</span>
+          </div>
+          <div class="activity-panel">
+            <div id="recentActivity">
+              <div class="activity-empty">
+                <span class="activity-empty-icon">📭</span>
+                <p>No recent activity to show</p>
               </div>
             </div>
           </div>
         </div>
+      </div>
       </div>
       
       <!-- Power BI Viewer Modal -->
@@ -323,208 +794,422 @@
           <div id="powerbiMsg" style="margin-top: 10px; color: #999; text-align: center;"></div>
         </div>
       </div>
-      
-      <!-- Power BI Settings Modal (Admin Only) - Multi-Report Management -->
-      <div id="powerbiSettingsModal" class="modal">
-        <div class="modal-content bg-white rounded-lg shadow" style="max-width: 700px; width: 90%; max-height: 90vh; overflow-y: auto;">
-          <h3>Power BI Reports Management</h3>
-          
-          <!-- Add New Report Section -->
-          <div style="background: #f0f4ff; padding: 15px; border-radius: 8px; margin-bottom: 20px; border-left: 4px solid #667eea;">
-            <h4 style="margin: 0 0 15px 0; font-size: 15px; color: #667eea;">➕ Add New Report</h4>
-            
-            <label>Report Name:</label>
-            <input id="powerbiReportName" type="text" placeholder="e.g., Sales Dashboard" style="width: 100%; padding: 12px 16px; margin-bottom: 15px; border: 2px solid #e0e0e0; border-radius: 8px; font-size: 15px; box-sizing: border-box;" />
-            
-            <label>Embed URL:</label>
-            <input id="powerbiEmbedUrl" type="url" placeholder="https://app.powerbi.com/view?r=... or http://server/Reports/powerbi/..." style="width: 100%; padding: 12px 16px; margin-bottom: 15px; border: 2px solid #e0e0e0; border-radius: 8px; font-size: 15px; box-sizing: border-box;" />
-            
-            <div style="background: white; padding: 12px; border-radius: 6px; margin-bottom: 15px; border: 1px solid #e0e0e0;">
-              <h5 style="margin: 0 0 10px 0; font-size: 13px; color: #555;">Display Options</h5>
-              <label style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px; cursor: pointer;">
-                <input id="powerbiShowFilterPane" type="checkbox" checked />
-                <span>Show Filter Pane</span>
-              </label>
-              <label style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px; cursor: pointer;">
-                <input id="powerbiShowNavPane" type="checkbox" checked />
-                <span>Show Navigation Pane</span>
-              </label>
-              <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
-                <input id="powerbiAllowFullscreen" type="checkbox" checked />
-                <span>Allow Fullscreen Mode</span>
-              </label>
-            </div>
-            
-            <button id="addPowerBIReportBtn" class="w-full bg-indigo-600 text-white px-3 py-2 rounded mb-2">Add Report</button>
-                <button id="showReportDefsBtn" class="flex items-center gap-2 px-4 py-3 bg-sky-500 text-white rounded-lg font-semibold justify-center">
-                  🗂️ Report Definitions
-                </button>
-            <div id="powerbiAddMsg" style="color: #666; font-size: 13px;"></div>
+
+      <!-- Premium Dashboard Modal -->
+      <div id="premiumDashboardModal" class="modal">
+        <div class="modal-content bg-white rounded-xl shadow-xl" style="max-width: 1000px; width: 90%; max-height: 90vh; overflow: auto;">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+            <h3 style="margin:0; display:flex; align-items:center; gap:10px;"><span style="font-size:24px;">🌟</span> Premium Dashboard</h3>
+            <button id="closePremiumDashboardBtn" class="px-3 py-1 bg-gray-200 rounded">Close</button>
           </div>
-          
-          <!-- Reports List Section -->
-          <div style="background: #fff3e0; padding: 15px; border-radius: 8px; border-left: 4px solid #f9484a;">
-            <h4 style="margin: 0 0 15px 0; font-size: 15px; color: #d32f2f;">📋 Existing Reports</h4>
-            <div id="powerbiReportsList" style="max-height: 300px; overflow-y: auto;">
-              <div style="text-align: center; color: #999; padding: 30px 10px;">
-                <p>Loading reports...</p>
+          <div id="premiumDashboardBody" style="display:grid; grid-template-columns: 1fr 320px; gap:16px;">
+            <div class="metric-tile" style="min-height:300px; background:#f8fafc; padding:12px; border-radius:8px;">
+              <div id="premiumOverview" style="font-size:14px; color:#334155;">Loading premium metrics...</div>
+              <div id="premiumCharts" style="margin-top:12px;">
+                <!-- Placeholder area for future charts -->
+                <div style="height:220px; border-radius:8px; background:linear-gradient(90deg,#fff7ed,#ffedd5); display:flex; align-items:center; justify-content:center; color:#92400e;">Chart placeholders</div>
+              </div>
+            </div>
+            <div class="metric-tile" style="min-height:300px; background:#ffffff; padding:12px; border-radius:8px; border:1px solid #e6eef6;">
+              <h4 style="margin:0 0 8px 0; font-size:14px; color:#0f172a;">Actions & Filters</h4>
+              <div style="display:flex; flex-direction:column; gap:8px; margin-top:8px;">
+                <button id="premiumRefreshBtn" class="btn-secondary">Refresh Metrics</button>
+                <label style="font-size:13px; color:#475569;">Time range</label>
+                <select id="premiumRange" style="padding:8px; border-radius:6px;"><option value="7">Last 7 days</option><option value="30" selected>Last 30 days</option><option value="90">Last 90 days</option></select>
+                <div id="premiumActionsMsg" style="font-size:13px; color:#64748b; margin-top:6px;">Premium features require appropriate role.</div>
               </div>
             </div>
           </div>
-          
-          <div style="margin-top: 20px; display: flex; gap: 10px; justify-content: flex-end;">
-            <button id="closePowerBISettingsBtn" class="px-3 py-1 bg-gray-200 rounded">Close</button>
+        </div>
+      </div>
+      
+      <!-- Power BI Settings Modal (Admin Only) - Multi-Report Management -->
+      <div id="powerbiSettingsModal" class="modal">
+        <div class="modal-content" style="max-width:700px; width:94%; max-height:92vh; display:flex; flex-direction:column;">
+          <div class="mh" style="background:linear-gradient(135deg,#f59e0b,#d97706);">
+            <div class="mh-left">
+              <div class="mh-icon">📊</div>
+              <div>
+                <div class="mh-title">Power BI Reports</div>
+                <div class="mh-sub">Add and manage embedded reports</div>
+              </div>
+            </div>
+            <button id="closePowerBISettingsBtn" class="mh-close">&times;</button>
           </div>
-          
-          <div id="powerbiSettingsMsg" style="margin-top: 15px;"></div>
+          <div class="mb" style="overflow-y:auto; flex:1;">
+            <!-- Add New Report -->
+            <div class="m-section">
+              <div class="m-section-title">
+                <span class="m-section-title-icon" style="background:#eef2ff;">➕</span>
+                Add New Report
+              </div>
+              <div class="mf-group">
+                <label>Report Name</label>
+                <input id="powerbiReportName" type="text" placeholder="e.g., Sales Dashboard" />
+              </div>
+              <div class="mf-group">
+                <label>Embed URL</label>
+                <input id="powerbiEmbedUrl" type="url" placeholder="https://app.powerbi.com/view?r=..." />
+              </div>
+              <div class="mf-group">
+                <label>Display Options</label>
+                <label class="m-toggle-row"><input id="powerbiShowFilterPane" type="checkbox" checked /> Show Filter Pane</label>
+                <label class="m-toggle-row"><input id="powerbiShowNavPane" type="checkbox" checked /> Show Navigation Pane</label>
+                <label class="m-toggle-row"><input id="powerbiAllowFullscreen" type="checkbox" checked /> Allow Fullscreen Mode</label>
+              </div>
+              <div style="display:flex;gap:10px;flex-wrap:wrap;">
+                <button id="addPowerBIReportBtn" class="mbtn mbtn-indigo" style="flex:1;">➕ Add Report</button>
+                <button id="showReportDefsBtn" class="mbtn mbtn-sky" style="flex:1;">🗂️ Report Definitions</button>
+              </div>
+              <div id="powerbiAddMsg" style="margin-top:10px; font-size:13px; color:#64748b;"></div>
+            </div>
+            <!-- Existing Reports -->
+            <div class="m-section">
+              <div class="m-section-title">
+                <span class="m-section-title-icon" style="background:#fff7ed;">📋</span>
+                Existing Reports
+              </div>
+              <div id="powerbiReportsList" style="max-height:280px; overflow-y:auto;">
+                <div style="text-align:center; color:#94a3b8; padding:30px 10px; font-size:13px;">Loading reports…</div>
+              </div>
+            </div>
+            <div id="powerbiSettingsMsg" style="font-size:13px; color:#64748b;"></div>
+          </div>
         </div>
       </div>
       
       <!-- Create User Modal -->
       <div id="createUserModal" class="modal">
-        <div class="modal-content">
-          <h3>Create New User</h3>
-          <input id="newUsername" type="text" placeholder="Username" />
-          <input id="newPassword" type="password" placeholder="Password" />
-          <select id="newUserRole">
-            <option value="user">User</option>
-            <option value="admin">Admin</option>
-          </select>
-          <div>
-            <button id="createUserBtn" class="px-3 py-2 bg-emerald-600 text-white rounded">Create User</button>
-            <button id="closeCreateUserBtn" class="px-3 py-2 bg-gray-200 rounded">Cancel</button>
+        <div class="modal-content" style="max-width:440px; width:94%;">
+          <div class="mh">
+            <div class="mh-left">
+              <div class="mh-icon">👤</div>
+              <div>
+                <div class="mh-title">Create New User</div>
+                <div class="mh-sub">Add a new app user and set their role</div>
+              </div>
+            </div>
+            <button id="closeCreateUserBtn" class="mh-close" title="Close">&times;</button>
           </div>
-          <div id="createUserMsg" style="margin-top: 15px;"></div>
+          <div class="mb">
+            <div class="mf-group">
+              <label>Username</label>
+              <div style="display:flex;gap:8px;align-items:center;">
+                <input id="newUsername" type="text" placeholder="e.g. john.doe" list="userOptions" style="flex:1;padding:11px 14px;border-radius:10px;border:1.5px solid #e2e8f0;font-size:14px;" />
+                <button type="button" class="userDropdownBtn mbtn mbtn-ghost mbtn-sm" data-target="newUsername" title="Pick existing username">▾</button>
+              </div>
+            </div>
+            <div class="mf-group">
+              <label>Password</label>
+              <input id="newPassword" type="password" placeholder="••••••••" />
+            </div>
+            <div class="mf-group">
+              <label>Role</label>
+              <select id="newUserRole">
+                <option value="user">👤 User</option>
+                <option value="admin">🛡️ Admin</option>
+              </select>
+            </div>
+            <div id="createUserMsg" style="font-size:13px;min-height:18px;"></div>
+          </div>
+          <div class="mfoot">
+            <button class="mbtn mbtn-ghost" onclick="document.getElementById('createUserModal').style.display='none'">Cancel</button>
+            <button id="createUserBtn" class="mbtn mbtn-success">✓ Create User</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Create Mobile App User Modal -->
+      <div id="createMobileUserModal" class="modal">
+        <div class="modal-content" style="max-width:440px; width:94%;">
+          <div class="mh" style="background:linear-gradient(135deg,#6366f1,#4338ca);">
+            <div class="mh-left">
+              <div class="mh-icon">📱</div>
+              <div>
+                <div class="mh-title">Create Mobile App User</div>
+                <div class="mh-sub">User will be redirected to the mobile app</div>
+              </div>
+            </div>
+            <button id="closeCreateMobileUserBtn" class="mh-close">&times;</button>
+          </div>
+          <div class="mb">
+            <div class="mf-group">
+              <label>Username</label>
+              <input id="mobileUsername" type="text" placeholder="e.g. jane.doe" />
+            </div>
+            <div class="mf-group">
+              <label>Password</label>
+              <input id="mobilePassword" type="password" placeholder="••••••••" />
+            </div>
+            <div class="mf-group">
+              <label>Role</label>
+              <select id="mobileUserRole">
+                <option value="user">👤 User</option>
+                <option value="admin">🛡️ Admin</option>
+              </select>
+            </div>
+            <div id="createMobileUserMsg" style="font-size:13px;min-height:18px;"></div>
+          </div>
+          <div class="mfoot">
+            <button class="mbtn mbtn-ghost" onclick="document.getElementById('createMobileUserModal').style.display='none'">Cancel</button>
+            <button id="createMobileUserBtn" class="mbtn mbtn-indigo">📱 Create &amp; Open Mobile App</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Mobile SFA Management Modal -->
+      <div id="mobileSFAModal" class="modal">
+        <div class="modal-content" style="max-width:420px; width:94%;">
+          <div class="mh" style="background:linear-gradient(135deg,#6366f1,#4338ca);">
+            <div class="mh-left">
+              <div class="mh-icon">📱</div>
+              <div>
+                <div class="mh-title">Mobile SFA</div>
+                <div class="mh-sub">Manage the mobile sales-force app</div>
+              </div>
+            </div>
+            <button id="closeMobileSFABtn" class="mh-close">&times;</button>
+          </div>
+          <div class="mb" style="display:flex;flex-direction:column;gap:10px;">
+            <button id="mobileSFAHomeBtn" class="sfa-btn sfa-indigo">
+              <span class="sfa-btn-icon">🏠</span>
+              <span>Home</span>
+            </button>
+            <button id="mobileSFACreateUserBtn" class="sfa-btn sfa-pink">
+              <span class="sfa-btn-icon">👤</span>
+              <span>Create Mobile App User</span>
+            </button>
+            <button id="mobileSFACustomersBtn" class="sfa-btn sfa-teal">
+              <span class="sfa-btn-icon">🧑‍🤝‍🧑</span>
+              <span>Customers</span>
+            </button>
+            <button id="mobileSFAOrdersBtn" class="sfa-btn sfa-orange">
+              <span class="sfa-btn-icon">📦</span>
+              <span>Orders</span>
+            </button>
+          </div>
         </div>
       </div>
 
       <!-- Admin Settings Modal -->
       <div id="adminSettingsModal" class="modal">
-        <div class="modal-content" style="max-width: 700px; width: 95%;">
-          <h3>Report Databases (Definitions & Runtime)</h3>
-          <div style="margin:8px 0 16px 0; padding:10px; background:#fff3cd; border:1px solid #ffe08a; color:#7a5e00; border-radius:6px; font-size:13px;">
-            Main Database is configured on the login page. Use this panel to select two databases: <strong>Definitions DB</strong> (stores report names and stored-procedure definitions) and <strong>Runtime DB</strong> (where stored procedures are executed and report data is read). Both databases should be on the same SQL Server instance.
+        <div class="modal-content" style="max-width:800px; width:95%; max-height:92vh; display:flex; flex-direction:column;">
+          <div class="mh">
+            <div class="mh-left">
+              <div class="mh-icon">🗄️</div>
+              <div>
+                <div class="mh-title">Report Database Configuration</div>
+                <div class="mh-sub">Set up definitions &amp; runtime databases</div>
+              </div>
+            </div>
+            <button id="closeAdminSettingsBtn" class="mh-close">&times;</button>
           </div>
-          <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
-            <div>
-              <label>Driver</label>
-              <input id="setDriver" placeholder="ODBC Driver 18 for SQL Server" list="driverOptions" disabled />
-              <datalist id="driverOptions"></datalist>
+          <div class="mb" style="overflow-y:auto; flex:1;">
+            <div class="m-tip">
+              <span class="m-tip-icon">💡</span>
+              <div><strong>Quick Setup Guide:</strong> Configure two databases — <strong>Definitions DB</strong> stores report configurations, and <strong>Runtime DB</strong> contains stored procedures and data.</div>
             </div>
-            <div>
-              <label>Host</label>
-              <input id="setHost" placeholder="SERVER or SERVER\\INSTANCE" disabled />
-            </div>
-            <div>
-              <label>Port</label>
-              <input id="setPort" type="number" placeholder="1433" disabled />
-            </div>
-            <div>
-              <label>Main Database</label>
-              <input id="setDatabase" placeholder="ReportApp" disabled />
-            </div>
-            <div style="grid-column:1 / span 2; display:flex; gap:12px; align-items:center;">
-              <label style="display:flex; align-items:center; gap:6px;"><input id="setTrusted" type="checkbox" checked disabled /> Windows Authentication</label>
-              <label style="display:flex; align-items:center; gap:6px;"><input id="setEncrypt" type="checkbox" disabled /> Encrypt</label>
-            </div>
-            <div id="sqlAuthRow" style="grid-column:1 / span 2; display:grid; grid-template-columns:1fr 1fr; gap:12px;">
-              <div>
-                <label>Username</label>
-                <input id="setUsername" placeholder="SQL Login" disabled />
+
+            <!-- Server Connection (Read-only) -->
+            <div class="m-section">
+              <div class="m-section-title">
+                <span class="m-section-title-icon" style="background:#f0fdf4;">🔌</span>
+                SQL Server Connection <span style="font-weight:400; font-size:11px; color:#94a3b8; text-transform:none;">(from login settings)</span>
               </div>
-              <div>
-                <label>Password</label>
-                <input id="setPassword" type="password" placeholder="(leave blank to keep)" disabled />
-              </div>
-            </div>
-          </div>
-            <div style="margin-top:16px; padding:12px; border-left:4px solid #4caf50; background:#f1f8e9; border-radius:6px;">
-            <div style="font-weight:700; color:#2e7d32; margin-bottom:8px;">Report Databases</div>
-            <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; align-items:end;">
-              <div>
-                <label>Definitions DB (stores report definitions)</label>
-                <input id="setReportDatabase" placeholder="ReportAppReports" list="dbOptions" />
-                <datalist id="dbOptions"></datalist>
-                <div style="font-size:12px; color:#555; margin-top:6px;">This DB stores `dbo.report_definitions` used by the admin UI.</div>
-              </div>
-              <div>
-                <label>Runtime DB (executes stored procedures)</label>
-                <input id="setReportsDatabase" placeholder="property_manager_db" list="dbOptions" />
-                <div style="font-size:12px; color:#555; margin-top:6px;">This DB contains the stored procedures and data that report definitions run against.</div>
-              </div>
-              <div style="display:flex; gap:8px; align-items:flex-end;">
-                <button id="loadDatabasesBtn" class="px-2 py-1 bg-gray-200 rounded" title="Load databases from server">Load DBs</button>
-                <div style="display:flex; gap:8px;">
-                  <button id="testReportDbBtn" class="btn-secondary">Test Definitions DB</button>
-                  <button id="testRuntimeDbBtn" class="btn-secondary">Test Runtime DB</button>
+              <div class="mf-row-2" style="background:#f8fafc; border-radius:10px; padding:14px; border:1px solid #e2e8f0;">
+                <div class="mf-group">
+                  <label>🖥️ Server</label>
+                  <input id="setHost" placeholder="SERVER\INSTANCE" disabled style="background:#fff; cursor:not-allowed; opacity:0.7;" />
+                </div>
+                <div class="mf-group">
+                  <label>🔢 Port</label>
+                  <input id="setPort" type="number" placeholder="1433" disabled style="background:#fff; cursor:not-allowed; opacity:0.7;" />
+                </div>
+                <div class="mf-group">
+                  <label>🗃️ Main Database</label>
+                  <input id="setDatabase" placeholder="ReportApp" disabled style="background:#fff; cursor:not-allowed; opacity:0.7;" />
+                </div>
+                <div class="mf-group">
+                  <label>🔐 Authentication</label>
+                  <input id="setTrusted" type="text" disabled value="Windows Auth" style="background:#fff; cursor:not-allowed; opacity:0.7;" />
                 </div>
               </div>
+              <!-- Hidden fields for compatibility -->
+              <div style="display:none;">
+                <input id="setDriver" disabled />
+                <datalist id="driverOptions"></datalist>
+                <input id="setEncrypt" type="checkbox" disabled />
+                <input id="setUsername" disabled />
+                <input id="setPassword" type="password" disabled />
+              </div>
             </div>
-            <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-top:8px;">
-              <div id="reportDbStatus" style="font-size:12px; color:#666;"></div>
-              <div id="runtimeDbStatus" style="font-size:12px; color:#666;"></div>
+
+            <!-- Definitions DB -->
+            <div class="m-section" style="background:linear-gradient(135deg,#f0f9ff,#e0f2fe); border:2px solid #0ea5e9;">
+              <div class="m-section-title" style="color:#0c4a6e;">
+                <span class="m-section-title-icon" style="background:#bae6fd;">📝</span>
+                Definitions Database
+                <span style="font-weight:400; font-size:11px; color:#0369a1; text-transform:none; margin-left:4px;">Stores report configs &amp; metadata</span>
+              </div>
+              <div class="mf-group">
+                <label>Database Name</label>
+                <input id="setReportDatabase" placeholder="e.g., ReportAppReports" list="dbOptions" style="border-color:#38bdf8;" />
+                <datalist id="dbOptions"></datalist>
+              </div>
+              <div style="display:flex; gap:10px; flex-wrap:wrap;">
+                <button id="testReportDbBtn" class="mbtn mbtn-sky" style="flex:1;">🔍 Test Connection</button>
+                <button id="loadDatabasesBtn" class="mbtn mbtn-ghost" style="flex:1;">📋 Load Available DBs</button>
+              </div>
+              <div id="reportDbStatus" style="margin-top:10px; font-size:13px; min-height:18px;"></div>
             </div>
+
+            <!-- Runtime DB -->
+            <div class="m-section" style="background:linear-gradient(135deg,#f0fdf4,#dcfce7); border:2px solid #22c55e;">
+              <div class="m-section-title" style="color:#14532d;">
+                <span class="m-section-title-icon" style="background:#bbf7d0;">⚡</span>
+                Runtime Database
+                <span style="font-weight:400; font-size:11px; color:#166534; text-transform:none; margin-left:4px;">Contains SPs and report data</span>
+              </div>
+              <div class="mf-group">
+                <label>Database Name</label>
+                <input id="setReportsDatabase" placeholder="e.g., property_manager_db" list="dbOptions" style="border-color:#4ade80;" />
+              </div>
+              <div style="display:flex; gap:10px;">
+                <button id="testRuntimeDbBtn" class="mbtn mbtn-success" style="flex:1;">🔍 Test Connection</button>
+              </div>
+              <div id="runtimeDbStatus" style="margin-top:10px; font-size:13px; min-height:18px;"></div>
+            </div>
+
+            <div class="m-warn" style="margin-top:14px;">
+              <span class="m-tip-icon">⚠️</span>
+              <div><strong>Security note:</strong> Saving sets <em>TrustServerCertificate=true</em> which disables TLS validation. Suitable for local/dev environments only — use a CA-signed cert in production.</div>
+            </div>
+            <div id="trustNote" style="display:none;"></div>
+            <div id="adminSettingsMsg" style="font-size:13px; margin-top:10px; min-height:18px;"></div>
           </div>
-          <div style="margin-top:16px; display:flex; gap:10px; justify-content:flex-end;">
-            <button id="loadDriversBtn" class="btn-secondary" title="Load installed ODBC drivers" disabled>Load Drivers</button>
-            <button id="saveAdminSettingsBtn" class="btn-primary">Save Report DB</button>
-            <button id="closeAdminSettingsBtn" class="btn-secondary">Close</button>
+          <div class="mfoot">
+            <button id="loadDriversBtn" style="display:none;">Load Drivers</button>
+            <button id="closeAdminSettingsBtn2" class="mbtn mbtn-ghost" onclick="document.getElementById('adminSettingsModal').style.display='none'">Cancel</button>
+            <button id="saveAdminSettingsBtn" class="mbtn mbtn-primary">💾 Save Configuration</button>
           </div>
-          <div id="adminSettingsMsg" style="margin-top:10px; font-size:13px;"></div>
         </div>
       </div>
 
       <!-- Report Definitions Modal (Admin) -->
       <div id="reportDefsModal" class="modal">
-        <div class="modal-content bg-white rounded-lg shadow-lg" style="max-width:900px; width:95%;">
-          <h3 style="display:flex; align-items:center; gap:8px; margin-top:0;">🗂️ Report Definitions</h3>
-          <p style="margin:0 0 12px 0; font-size:13px; color:#555;">Create, update and remove stored procedure based report definitions. Parameters are an ordered list matching the stored procedure signature.</p>
-          <div style="display:grid; grid-template-columns:300px 1fr; gap:16px;">
-            <div style="border-right:1px solid #ddd; padding-right:12px; max-height:420px; overflow:auto;">
-              <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
-                <strong style="font-size:13px;">Definitions</strong>
-                <button id="refreshDefsBtn" class="btn-secondary" style="padding:6px 10px; font-size:12px;">Refresh</button>
-              </div>
-              <div id="defsList" style="display:flex; flex-direction:column; gap:6px;"></div>
-            </div>
+        <div class="modal-content" style="max-width: 1000px; width: 96%; max-height: 90vh; overflow: hidden; padding: 0; border-radius: 18px; display: flex; flex-direction: column;">
+          <div style="display: flex; justify-content: space-between; align-items: center; padding: 20px 24px; border-bottom: 1px solid #e2e8f0; background: linear-gradient(120deg, #eef2ff 0%, #f8fafc 100%);">
             <div>
-              <div style="display:flex; gap:10px; margin-bottom:10px;">
-                <button id="newDefBtn" class="px-3 py-2 bg-emerald-500 text-white rounded-md font-semibold">New Definition</button>
-                <button id="saveDefBtn" class="px-3 py-2 bg-gray-700 text-white rounded-md font-semibold">Save Changes</button>
-                <button id="deleteDefBtn" class="px-3 py-2 bg-red-600 text-white rounded-md font-semibold">Delete</button>
-                <button id="editParamsBtn" class="px-3 py-2 bg-slate-200 text-slate-800 rounded-md">Edit Parameter Objects</button>
-              </div>
-              <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
-                <div>
-                  <label style="font-size:12px;">Report Name</label>
-                  <input id="defReportName" placeholder="SalesSummary" />
-                </div>
-                <div>
-                  <label style="font-size:12px;">Stored Procedure</label>
-                  <input id="defStoredProc" placeholder="usp_MyReportProcedure" />
-                </div>
-                <div style="grid-column:1 / span 2;">
-                  <label style="font-size:12px;">Parameters (comma separated)</label>
-                  <input id="defParameters" placeholder="start_date,end_date,region" />
-                </div>
-                <div style="display:flex; align-items:center; gap:8px;">
-                  <input id="defActive" type="checkbox" checked /> <label for="defActive" style="font-size:12px;">Active</label>
-                </div>
-                <div style="grid-column:1 / span 2; font-size:12px; color:#666;" id="defMsg"></div>
-                <div style="grid-column:1 / span 2; margin-top:10px; display:flex; gap:8px; align-items:center;">
-                  <button id="editParamsBtn" class="btn-secondary" style="padding:8px 12px;">Edit Parameter Objects</button>
-                  <div style="font-size:12px; color:#666;">Open a structured editor for parameters (name + optional <code>values_query</code>).</div>
-                </div>
-                <textarea id="defParametersJson" style="display:none;" aria-hidden="true"></textarea>
-              </div>
+              <h3 style="margin: 0; font-size: 20px; color: #312e81; display: flex; align-items: center; gap: 10px;">
+                <span style="font-size: 26px;">🗂️</span>
+                Report Definitions
+              </h3>
+              <p style="margin: 6px 0 0; font-size: 13px; color: #475569;">Create, update, and organise stored procedure driven reports for your admins and analysts.</p>
+            </div>
+            <button id="closeDefsBtn" style="font-size: 26px; background: none; border: none; color: #475569; cursor: pointer; padding: 4px 8px; line-height: 1;">×</button>
+          </div>
+          <div style="padding: 16px 24px 0; background: linear-gradient(180deg, #f8fafc 0%, #ffffff 30%); border-bottom: 1px solid #e2e8f0;">
+            <div style="display: flex; gap: 12px; flex-wrap: wrap; align-items: center;">
+              <button id="newDefBtn" class="px-3 py-2 bg-emerald-500 text-white rounded-md font-semibold shadow-sm hover:bg-emerald-600" style="display: flex; align-items: center; gap: 6px;">➕ New Definition</button>
+              <button id="saveDefBtn" class="px-3 py-2 bg-indigo-600 text-white rounded-md font-semibold shadow-sm hover:bg-indigo-700" style="display: flex; align-items: center; gap: 6px;">💾 Save Changes</button>
+              <button id="deleteDefBtn" class="px-3 py-2 bg-rose-500 text-white rounded-md font-semibold shadow-sm hover:bg-rose-600" style="display: flex; align-items: center; gap: 6px;">🗑️ Delete</button>
+              <button id="editParamsBtn" class="px-3 py-2 bg-slate-200 text-slate-800 rounded-md font-semibold hover:bg-slate-300" style="display: flex; align-items: center; gap: 6px;">🧩 Edit Parameter Objects</button>
+              <button id="manageAccessBtn" class="px-3 py-2 bg-violet-500 text-white rounded-md font-semibold hover:bg-violet-600" style="display: flex; align-items: center; gap: 6px;">🔐 Manage Access</button>
+              <div style="flex: 1 1 200px; text-align: right; font-size: 12px; color: #64748b;">Tip: Save changes before opening the parameter editor.</div>
             </div>
           </div>
-          <div style="margin-top:18px; display:flex; justify-content:flex-end; gap:10px;">
-            <button id="closeDefsBtn" class="btn-secondary">Close</button>
+          <div style="flex: 1; display: grid; grid-template-columns: 280px 1fr; min-height: 0;">
+            <div class="metric-tile" style="background: #f1f5f9; border-right: 1px solid #e2e8f0; padding: 20px; display: flex; flex-direction: column; gap: 14px;">
+              <div style="display: flex; justify-content: space-between; align-items: center;">
+                <div style="font-size: 13px; font-weight: 600; color: #1e293b;">Definitions</div>
+                <button id="refreshDefsBtn" class="btn-secondary" style="padding: 6px 10px; font-size: 12px;">Refresh</button>
+              </div>
+              <div style="font-size: 12px; color: #64748b;">Select a report to edit its details or start a new definition.</div>
+              <div id="defsList" style="flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; padding-right: 4px;"></div>
+            </div>
+            <div class="metric-tile" style="padding: 22px; overflow-y: auto; background: #ffffff;">
+              <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px;">
+                <div style="display: flex; flex-direction: column; gap: 6px;">
+                  <label style="font-size: 12px; font-weight: 600; color: #475569;">Report Name</label>
+                  <input id="defReportName" placeholder="SalesSummary" />
+                </div>
+                <div style="display: flex; flex-direction: column; gap: 6px;">
+                  <label style="font-size: 12px; font-weight: 600; color: #475569;">Stored Procedure</label>
+                  <div style="display: flex; gap: 8px; align-items: center;">
+                    <input id="defStoredProc" list="storedProcOptions" placeholder="usp_MyReportProcedure" autocomplete="off" style="flex: 1;" />
+                    <button id="openStoredProcSearchBtn" class="px-3 py-2 bg-slate-200 text-slate-800 rounded-md font-semibold hover:bg-slate-300" type="button" style="display:flex; align-items:center; gap:6px;">🔍 Browse</button>
+                  </div>
+                  <datalist id="storedProcOptions"></datalist>
+                </div>
+                <div style="grid-column: 1 / -1; display: flex; flex-direction: column; gap: 6px;">
+                  <label style="font-size: 12px; font-weight: 600; color: #475569;">Parameters (comma separated)</label>
+                  <input id="defParameters" placeholder="start_date,end_date,region" />
+                </div>
+                <div style="display: flex; align-items: center; gap: 8px;">
+                  <input id="defActive" type="checkbox" /> <label for="defActive" style="font-size: 12px; color: #475569;">Active</label>
+                </div>
+              </div>
+                <!-- Definition Access Modal (Admin) -->
+                <div id="defAccessModal" class="modal">
+                  <div class="modal-content" style="max-width:720px; width: 96%; max-height: 80vh; overflow:auto;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+                      <h3 style="margin:0;">Manage Definition Access</h3>
+                      <button id="closeDefAccessBtn" class="px-3 py-1 bg-gray-200 rounded">Close</button>
+                    </div>
+                    <div style="margin-bottom:12px; color:#475569; font-size:13px;">Define which users or roles can access the selected report definition. Admins always bypass these rules.</div>
+                    <div style="display:flex; gap:12px; align-items:center; margin-bottom:12px;">
+                      <select id="accessAddType" style="width:140px;">
+                        <option value="user">User</option>
+                        <option value="role">Role</option>
+                      </select>
+                                  <div style="display:flex; gap:8px; align-items:center; flex:1;">
+                                    <input id="accessAddPrincipal" placeholder="username or role (case-insensitive)" style="flex:1;" list="userOptions" />
+                                    <button type="button" class="userDropdownBtn" data-target="accessAddPrincipal" title="Choose user" style="padding:6px 8px; border-radius:6px; border:1px solid #ddd; background:#fff; cursor:pointer;">▾</button>
+                                  </div>
+                      <label style="display:flex; align-items:center; gap:8px;"><input id="accessAddAllowed" type="checkbox" checked /> Allowed</label>
+                      <button id="accessAddBtn" class="btn-primary">Add</button>
+                    </div>
+                    <div id="accessList" style="max-height: 300px; overflow:auto; border:1px solid #e6e6f0; border-radius:8px; padding:10px; background:#fafafa;">
+                      <div style="color:#666; font-size:13px;">Load a definition to view access rows.</div>
+                    </div>
+                    <div style="display:flex; gap:10px; justify-content:flex-end; margin-top:12px;">
+                      <button id="accessSaveBtn" class="px-4 py-2 bg-indigo-600 text-white rounded">Save Changes</button>
+                      <button id="accessCancelBtn" class="px-4 py-2 bg-gray-200 rounded">Cancel</button>
+                    </div>
+                    <div id="accessMsg" style="margin-top:10px; font-size:13px; color:#666;"></div>
+                  </div>
+                </div>
+              <div style="margin-top: 18px; padding: 14px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; font-size: 12px; color: #475569;">
+                <strong style="display: block; margin-bottom: 6px; color: #4338ca;">Structured parameters</strong>
+                Use the <em>Edit Parameter Objects</em> tool to define dropdown queries, friendly labels, and default values. This is optional but recommended for complex procedures.
+              </div>
+              <div id="defMsg" style="margin-top: 16px; font-size: 12px; color: #64748b;"></div>
+              <textarea id="defParametersJson" style="display:none;" aria-hidden="true"></textarea>
+            </div>
+          </div>
+          <div style="padding: 14px 22px; border-top: 1px solid #e2e8f0; background: #f8fafc; font-size: 12px; color: #64748b; text-align: right;">
+            Remember to save after making changes. All updates take effect immediately for admin users.
           </div>
         </div>
       </div>
-      
+        <div id="storedProcSearchModal" class="modal">
+          <div class="modal-content" style="max-width: 640px; width: 95%; max-height: 80vh; overflow: hidden; display: flex; flex-direction: column; border-radius: 18px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; padding: 20px 24px; border-bottom: 1px solid #e2e8f0; background: linear-gradient(120deg, #eef2ff 0%, #f8fafc 100%);">
+              <h3 style="margin: 0; font-size: 20px; color: #312e81; display: flex; align-items: center; gap: 10px;">
+                <span style="font-size: 24px;">🔍</span>
+                Browse Stored Procedures
+              </h3>
+              <button id="closeStoredProcSearchBtn" type="button" style="font-size: 26px; background: none; border: none; color: #475569; cursor: pointer; padding: 4px 8px; line-height: 1;">×</button>
+            </div>
+            <div style="padding: 16px 24px; background: #f8fafc; border-bottom: 1px solid #e2e8f0; display: flex; flex-direction: column; gap: 12px;">
+              <p style="margin: 0; font-size: 13px; color: #475569;">Search the runtime report database for available stored procedures. Select one to populate the definition.</p>
+              <input id="storedProcSearchInput" type="search" placeholder="Search stored procedures..." style="width: 100%; padding: 10px 14px; border: 1px solid #cbd5f5; border-radius: 10px; font-size: 14px;" />
+            </div>
+            <div id="storedProcSearchResults" style="flex: 1; overflow: auto; padding: 22px 24px; display: flex; flex-direction: column; gap: 12px; background: #ffffff;">
+              <div style="font-size: 13px; color: #64748b;">Start typing to search stored procedures.</div>
+            </div>
+          </div>
+        </div>
       <!-- Parameter Objects Editor Modal -->
       <div id="paramEditorModal" class="modal">
         <div class="modal-content bg-white rounded-lg shadow-lg" style="max-width:800px; width:95%; max-height:80vh; overflow:auto;">
@@ -533,6 +1218,13 @@
             <button id="closeParamEditorBtn" class="px-3 py-1 bg-gray-200 rounded">Close</button>
           </div>
           <p class="text-sm text-gray-600">Define parameter objects for this report definition. Each entry should include a <code>name</code> and may include a SQL <code>values_query</code> that will be executed against the runtime DB to populate dropdowns.</p>
+          <div style="margin-top: 14px; padding: 12px 14px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between;">
+            <div id="paramProcInfo" style="font-size: 13px; color: #1e293b;">Stored procedure: <strong>Not set</strong></div>
+            <div style="display: flex; gap: 8px; align-items: center;">
+              <button id="loadProcParamsBtn" class="px-3 py-2 bg-sky-500 text-white rounded shadow-sm" style="font-size: 13px; font-weight: 600;">Load From Procedure</button>
+              <span style="font-size: 11px; color: #64748b;">Requires runtime DB access.</span>
+            </div>
+          </div>
           <div id="paramsEditorList" class="flex flex-col gap-3 mt-4">Loading...</div>
           <div class="mt-4 flex gap-2">
             <button id="addParamRowBtn" class="px-3 py-2 bg-indigo-600 text-white rounded">Add Parameter</button>
@@ -583,66 +1275,147 @@
       
       <!-- Users List Modal -->
       <div id="usersModal" class="modal">
-        <div class="modal-content" style="max-width: 900px; width: 90%;">
-          <h3>Manage Users</h3>
-          <button id="refreshUsersBtn" class="btn-secondary" style="margin-bottom: 15px;">Refresh Users</button>
-          <button id="closeUsersBtn" class="btn-secondary" style="margin-bottom: 15px; margin-left: 10px;">Close</button>
-          <div id="usersList"></div>
+        <div class="modal-content" style="max-width:900px; width:95%; max-height:90vh; display:flex; flex-direction:column;">
+          <div class="mh" style="background:linear-gradient(135deg,#f43f5e,#be123c);">
+            <div class="mh-left">
+              <div class="mh-icon">👥</div>
+              <div>
+                <div class="mh-title">Manage Users</div>
+                <div class="mh-sub">View, edit and delete application users</div>
+              </div>
+            </div>
+            <button id="closeUsersBtn" class="mh-close">&times;</button>
+          </div>
+          <div class="mb" style="flex:1; overflow-y:auto;">
+            <div style="display:flex; justify-content:flex-end; margin-bottom:14px;">
+              <button id="refreshUsersBtn" class="mbtn mbtn-ghost mbtn-sm">🔄 Refresh</button>
+            </div>
+            <div id="usersList"></div>
+          </div>
         </div>
       </div>
 
       <!-- Change Password Modal (forced on first login if required) -->
       <div id="changePwdModal" class="modal">
-        <div class="modal-content" style="max-width: 420px; width: 95%;">
-          <h3>Change Password</h3>
-          <p style="margin:8px 0 16px; color:#555;">For security, please set a new password for your account.</p>
-          <label>New Password</label>
-          <input id="newPwd" type="password" placeholder="Enter new password" />
-          <label>Confirm Password</label>
-          <input id="newPwd2" type="password" placeholder="Confirm new password" />
-          <div>
-            <button id="savePwdBtn" class="btn-primary">Update Password</button>
-            <button id="cancelPwdBtn" class="btn-secondary">Cancel</button>
+        <div class="modal-content" style="max-width:420px; width:94%;">
+          <div class="mh" style="background:linear-gradient(135deg,#8b5cf6,#6d28d9);">
+            <div class="mh-left">
+              <div class="mh-icon">🔑</div>
+              <div>
+                <div class="mh-title">Change Password</div>
+                <div class="mh-sub">Set a new secure password for your account</div>
+              </div>
+            </div>
           </div>
-          <div id="changePwdMsg" style="margin-top:12px; font-size:13px;"></div>
+          <div class="mb">
+            <div class="m-tip"><span class="m-tip-icon">🔒</span>For your security, please choose a strong password that you haven't used before.</div>
+            <div class="mf-group">
+              <label>New Password</label>
+              <input id="newPwd" type="password" placeholder="Enter new password" />
+            </div>
+            <div class="mf-group">
+              <label>Confirm Password</label>
+              <input id="newPwd2" type="password" placeholder="Confirm new password" />
+            </div>
+            <div id="changePwdMsg" style="font-size:13px;min-height:18px;"></div>
+          </div>
+          <div class="mfoot">
+            <button id="cancelPwdBtn" class="mbtn mbtn-ghost">Cancel</button>
+            <button id="savePwdBtn" class="mbtn mbtn-primary">🔑 Update Password</button>
+          </div>
         </div>
       </div>
       
       <!-- Edit User Modal -->
       <div id="editUserModal" class="modal">
-        <div class="modal-content">
-          <h3>Edit User</h3>
-          <input id="editUserId" type="hidden" />
-          <label>Username:</label>
-          <input id="editUsername" type="text" placeholder="Username" />
-          <label>New Password (leave empty to keep current):</label>
-          <input id="editPassword" type="password" placeholder="New Password" />
-          <label>Role:</label>
-          <select id="editUserRole">
-            <option value="user">User</option>
-            <option value="admin">Admin</option>
-          </select>
-          <div>
-            <button id="saveUserBtn" class="btn-primary">Save Changes</button>
-            <button id="closeEditUserBtn" class="btn-secondary">Cancel</button>
+        <div class="modal-content" style="max-width:440px; width:94%;">
+          <div class="mh" style="background:linear-gradient(135deg,#f43f5e,#be123c);">
+            <div class="mh-left">
+              <div class="mh-icon">✏️</div>
+              <div>
+                <div class="mh-title">Edit User</div>
+                <div class="mh-sub">Update username, password or role</div>
+              </div>
+            </div>
+            <button id="closeEditUserBtn" class="mh-close">&times;</button>
           </div>
-          <div id="editUserMsg" style="margin-top: 15px;"></div>
+          <div class="mb">
+            <input id="editUserId" type="hidden" />
+            <div class="mf-group">
+              <label>Username</label>
+              <div style="display:flex;gap:8px;align-items:center;">
+                <input id="editUsername" type="text" placeholder="Username" list="userOptions" style="flex:1;padding:11px 14px;border-radius:10px;border:1.5px solid #e2e8f0;font-size:14px;" />
+                <button type="button" class="userDropdownBtn mbtn mbtn-ghost mbtn-sm" data-target="editUsername" title="Pick user">▾</button>
+              </div>
+            </div>
+            <div class="mf-group">
+              <label>New Password <span style="font-weight:400;text-transform:none;font-size:11px;color:#94a3b8;">(leave blank to keep current)</span></label>
+              <input id="editPassword" type="password" placeholder="••••••••" />
+            </div>
+            <div class="mf-group">
+              <label>Role</label>
+              <select id="editUserRole">
+                <option value="user">👤 User</option>
+                <option value="admin">🛡️ Admin</option>
+              </select>
+            </div>
+            <div id="editUserMsg" style="font-size:13px;min-height:18px;"></div>
+          </div>
+          <div class="mfoot">
+            <button class="mbtn mbtn-ghost" onclick="document.getElementById('editUserModal').style.display='none'">Cancel</button>
+            <button id="saveUserBtn" class="mbtn mbtn-primary">💾 Save Changes</button>
+          </div>
         </div>
       </div>
       
-      <div>
-        <h3>Run Report</h3>
-        <input id="reportName" placeholder="report name" />
-        <button id="runBtn">Run</button>
-        <pre id="output"></pre>
+      <!-- User Permissions Modal -->
+      <div id="permissionsModal" class="modal">
+        <div class="modal-content" style="max-width:960px; width:96%; max-height:90vh; display:flex; flex-direction:column;">
+          <div class="mh" style="background:linear-gradient(135deg,#8b5cf6,#6d28d9);">
+            <div class="mh-left">
+              <div class="mh-icon">🔐</div>
+              <div>
+                <div class="mh-title">User Permissions</div>
+                <div class="mh-sub">Control what each user can do in the app</div>
+              </div>
+            </div>
+            <button id="closePermissionsBtn" class="mh-close">&times;</button>
+          </div>
+          <div class="mb" style="flex:1; overflow-y:auto;">
+            <div class="m-tip"><span class="m-tip-icon">ℹ️</span>Admin users automatically have all permissions. Changes here only affect non-admin users.</div>
+            <div id="permissionsLoading" style="text-align:center; padding:40px; color:#94a3b8; font-size:14px;">Loading permissions…</div>
+            <div id="permissionsTable" style="display:none; overflow-x:auto;">
+              <table class="mu-table">
+                <thead>
+                  <tr>
+                    <th>User</th>
+                    <th>Role</th>
+                    <th title="Can import data files">📥 Import</th>
+                    <th title="Can create tables">📊 Create Table</th>
+                    <th title="Can delete tables">🗑️ Delete Table</th>
+                    <th title="Can run reports">📈 Run Reports</th>
+                    <th title="Can view Power BI">📊 Power BI</th>
+                    <th title="Can manage report definitions">🛠️ Manage Reports</th>
+                    <th title="Can view dashboard">📋 Dashboard</th>
+                  </tr>
+                </thead>
+                <tbody id="permissionsTableBody"></tbody>
+              </table>
+            </div>
+            <div id="permissionsMsg" style="margin-top:14px; text-align:center; font-size:13px;"></div>
+          </div>
+        </div>
       </div>
+      
     </div>
   </div>
-  <script src="/static/app.js?v=21"></script>
+  <script src="/static/page_transitions.js?v=1"></script>
+  <script src="/static/app.js?v=23"></script>
   <script>
     // Theme toggle: persist in localStorage and apply .dark to <html>
     (function(){
       const btn = document.getElementById('themeToggleBtn');
+      const forceBtn = document.getElementById('forceDarkBtn');
       function applyTheme(t){
         if (t === 'dark') document.documentElement.classList.add('dark'); else document.documentElement.classList.remove('dark');
         if (btn) btn.textContent = t === 'dark' ? '☀️' : '🌙';
@@ -659,6 +1432,10 @@
         const t = isDark ? 'dark' : 'light';
         localStorage.setItem('theme', t);
         applyTheme(t);
+      });
+      if (forceBtn) forceBtn.addEventListener('click', () => {
+        localStorage.setItem('theme', 'dark');
+        applyTheme('dark');
       });
     })();
   </script>
@@ -720,6 +1497,58 @@
             const m = document.getElementById(id);
             if (m) onModalVisible(m);
           });
+        })();
+      </script>
+      <script>
+        // Initialize dashboard visibility based on session (admin/user) after DOM is ready.
+        // First attempt to fetch the current user from the backend (so role is known),
+        // then run the existing visibility init logic.
+        (async function(){
+          try {
+              if (typeof loadCurrentUser === 'function') {
+                await loadCurrentUser();
+              }
+          } catch(e) {
+            console.warn('[Init] loadCurrentUser failed', e);
+          }
+
+          function initVisibility(){
+            try {
+              console.log('[Init] Checking session...');
+              if (sessionStorage.getItem('token')) {
+                const role = sessionStorage.getItem('role');
+                const username = sessionStorage.getItem('username');
+                console.log('[Init] Token found. Role:', role, 'Username:', username);
+
+                // Show the main UI for authenticated users, but only expose quick/admin actions to admins
+                if (typeof showMain === 'function') showMain();
+                console.log('[Init] After showMain, checking admin visibility...');
+                if (role === 'admin') {
+                  const userActions = document.getElementById('userActionsSection'); if (userActions) userActions.style.display = 'block';
+                  const admin = document.getElementById('adminSection'); if (admin) admin.style.display = 'block';
+                  const header = document.getElementById('adminHeaderControls'); if (header) header.style.display = 'flex';
+                  console.log('[Init] Admin sections forced visible:', {
+                    userActionsSection: userActions ? userActions.style.display : 'not found',
+                    adminSection: admin ? admin.style.display : 'not found',
+                    adminHeaderControls: header ? header.style.display : 'not found'
+                  });
+                } else {
+                  // Non-admin users: show user actions, hide admin-only controls
+                  console.log('[Init] Non-admin user - showing user actions, hiding admin controls for role:', role);
+                  const userActions = document.getElementById('userActionsSection'); if (userActions) userActions.style.display = 'block';
+                  const hideIds = ['adminSection','adminHeaderControls','manageAccessBtn'];
+                  hideIds.forEach(id => { const el = document.getElementById(id); if (el) el.style.display = 'none'; });
+                  // Keep quick actions like report/import visible to regular users
+                }
+              } else {
+                console.log('[Init] No token found, redirecting to login...');
+                if (!window.location.pathname.includes('/login')) window.location.href = '/login';
+              }
+            } catch(e) { console.error('[Init] Error:', e); }
+          }
+
+          if (document.readyState === 'complete' || document.readyState === 'interactive') initVisibility();
+          else document.addEventListener('DOMContentLoaded', initVisibility);
         })();
       </script>
 </body>

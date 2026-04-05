@@ -195,37 +195,50 @@
   
   <div id="dbModal" class="db-modal">
     <div class="db-modal-content">
-      <h2>Database Connection</h2>
-      <form id="dbForm">
-        <label>Admin Password (required)</label>
-        <input type="password" id="adminPwd" required placeholder="Enter 1234567890" />
-        
+      <h2>⚙️ Database Connection</h2>
+      <form id="dbForm" autocomplete="off">
+        <label>Admin Password <span style="font-weight:400;color:#999;font-size:12px;">(required to change settings)</span></label>
+        <input type="password" id="adminPwd" required placeholder="Enter admin password" autocomplete="new-password" />
+
         <label>ODBC Driver</label>
-        <select id="dbDriver">
+        <select id="dbDriver" style="width:100%;padding:10px 14px;border:2px solid #e0e0e0;border-radius:6px;font-size:14px;box-sizing:border-box;">
           <option value="ODBC Driver 18 for SQL Server" selected>ODBC Driver 18 for SQL Server</option>
           <option value="ODBC Driver 17 for SQL Server">ODBC Driver 17 for SQL Server</option>
         </select>
 
         <label>SQL Server</label>
-        <input type="text" id="dbHost" placeholder="SERVER\INSTANCE" required />
-        
+        <input type="text" id="dbHost" placeholder="SERVER\INSTANCE or hostname" required />
+
         <label>Database</label>
         <input type="text" id="dbName" placeholder="Database name" required />
-        
-        <label>
-          <input type="checkbox" id="dbTrusted" checked /> Use Windows Authentication
+
+        <label style="display:flex;align-items:center;gap:8px;margin-top:14px;">
+          <input type="checkbox" id="dbTrusted" checked style="width:auto;margin:0;" /> Use Windows Authentication
         </label>
-        
+
         <div id="sqlAuthFields" style="display:none;">
           <label>Username</label>
           <input type="text" id="dbUser" placeholder="SQL Server username" />
-          
           <label>Password</label>
-          <input type="password" id="dbPass" placeholder="SQL Server password" />
+          <input type="password" id="dbPass" placeholder="SQL Server password" autocomplete="new-password" />
         </div>
-        
-        <button type="submit">Save & Test</button>
-        <button type="button" onclick="closeDbModal()">Cancel</button>
+
+        <label style="display:flex;align-items:center;gap:8px;margin-top:14px;">
+          <input type="checkbox" id="dbEncrypt" style="width:auto;margin:0;" /> Encrypt Connection
+        </label>
+
+        <!-- Status banner -->
+        <div id="dbTestStatus" style="display:none;margin-top:16px;padding:12px 14px;border-radius:8px;font-size:13px;line-height:1.5;"></div>
+
+        <div style="display:flex;gap:10px;margin-top:20px;flex-wrap:wrap;">
+          <button type="submit" id="dbSaveBtn" style="flex:1;min-width:120px;">
+            🔍 Test &amp; Save
+          </button>
+          <button type="button" id="dbTestOnlyBtn" style="background:#0ea5e9;flex:1;min-width:100px;">
+            ⚡ Test Only
+          </button>
+          <button type="button" onclick="closeDbModal()" style="background:#6c757d;">Cancel</button>
+        </div>
       </form>
     </div>
   </div>
@@ -246,45 +259,91 @@
     const dbModal = document.getElementById('dbModal');
     const loginForm = document.getElementById('loginForm');
     const loginButton = loginForm.querySelector('button[type="submit"]');
-    
-    // Load database info on page load
+
+    // ── helpers ───────────────────────────────────────────────────────────────
+    function showStatus(msg, type) {
+      // type: 'info' | 'ok' | 'err' | 'warn'
+      const el = document.getElementById('dbTestStatus');
+      el.style.display = 'block';
+      const styles = {
+        info: 'background:#f0f9ff;border:1.5px solid #bae6fd;color:#075985;',
+        ok:   'background:#f0fdf4;border:1.5px solid #86efac;color:#166534;',
+        err:  'background:#fef2f2;border:1.5px solid #fecaca;color:#991b1b;',
+        warn: 'background:#fff7ed;border:1.5px solid #fed7aa;color:#9a3412;',
+      };
+      el.style.cssText += styles[type] || styles.info;
+      el.innerHTML = msg;
+    }
+    function hideStatus() {
+      const el = document.getElementById('dbTestStatus');
+      el.style.display = 'none';
+    }
+    function setButtons(disabled) {
+      document.getElementById('dbSaveBtn').disabled = disabled;
+      document.getElementById('dbTestOnlyBtn').disabled = disabled;
+    }
+
+    function buildPayload() {
+      return {
+        adminPassword: document.getElementById('adminPwd').value,
+        driver: document.getElementById('dbDriver').value,
+        host: document.getElementById('dbHost').value.trim(),
+        database: document.getElementById('dbName').value.trim(),
+        trusted: document.getElementById('dbTrusted').checked,
+        encrypt: document.getElementById('dbEncrypt').checked,
+        username: document.getElementById('dbUser').value || null,
+        password: document.getElementById('dbPass').value || null,
+      };
+    }
+
+    async function runTest(payload) {
+      const r = await fetch('/settings/test-public', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      let data;
+      try { data = await r.json(); } catch (e) { data = { ok: false, message: `HTTP ${r.status}: ${r.statusText}` }; }
+      // Normalise: FastAPI errors use {detail:...}, our endpoint uses {ok,message}
+      if (!data.message && data.detail) {
+        data.message = typeof data.detail === 'string' ? data.detail : JSON.stringify(data.detail);
+      }
+      if (data.message === undefined) {
+        data.message = JSON.stringify(data);
+      }
+      if (r.status === 403) data.ok = false;
+      return { status: r.status, data };
+    }
+
+    // ── Load DB info ──────────────────────────────────────────────────────────
     async function loadDbInfo() {
       try {
         const res = await fetch('/settings/info');
         if (res.ok) {
           const data = await res.json();
-          if (data.configured) {
-            dbIndicator.textContent = `🔧 DB: ${data.database} on ${data.host}`;
-          } else {
-            dbIndicator.textContent = '🔧 DB: Not Configured';
-          }
+          dbIndicator.textContent = data.configured
+            ? `🔧 DB: ${data.database} on ${data.host}`
+            : '🔧 DB: Not Configured';
         }
       } catch (e) {
         dbIndicator.textContent = '🔧 DB: Error';
       }
     }
-    
-    // Show DB modal when clicking indicator
-    dbIndicator.onclick = function() {
+
+    dbIndicator.onclick = function () {
       dbModal.style.display = 'block';
+      hideStatus();
       loadCurrentSettings();
     };
-    
     function closeDbModal() {
       dbModal.style.display = 'none';
     }
-    
-    // Close modal when clicking outside
-    dbModal.onclick = function(e) {
-      if (e.target === dbModal) closeDbModal();
-    };
-    
-    // Toggle SQL Auth fields
-    document.getElementById('dbTrusted').onchange = function() {
+    dbModal.onclick = function (e) { if (e.target === dbModal) closeDbModal(); };
+
+    document.getElementById('dbTrusted').onchange = function () {
       document.getElementById('sqlAuthFields').style.display = this.checked ? 'none' : 'block';
     };
-    
-    // Load current settings
+
     async function loadCurrentSettings() {
       try {
         const res = await fetch('/settings/info');
@@ -293,58 +352,87 @@
           if (data.configured) {
             document.getElementById('dbHost').value = data.host || '';
             document.getElementById('dbName').value = data.database || '';
-            document.getElementById('dbTrusted').checked = data.trusted || false;
+            document.getElementById('dbTrusted').checked = data.trusted !== false;
             document.getElementById('dbUser').value = data.username || '';
             document.getElementById('sqlAuthFields').style.display = data.trusted ? 'none' : 'block';
-            if (data.driver) {
-              document.getElementById('dbDriver').value = data.driver;
-            }
+            if (data.driver) document.getElementById('dbDriver').value = data.driver;
           }
         }
-      } catch (e) {
-        console.error('Failed to load settings', e);
-      }
+      } catch (e) { console.error('Failed to load settings', e); }
     }
-    
-    // Handle DB form submission
-    document.getElementById('dbForm').onsubmit = async (e) => {
+
+    // ── Test Only button ──────────────────────────────────────────────────────
+    document.getElementById('dbTestOnlyBtn').onclick = async function () {
+      const payload = buildPayload();
+      if (!payload.adminPassword) { showStatus('⚠️ Enter the admin password first.', 'warn'); return; }
+      if (!payload.host || !payload.database) { showStatus('⚠️ Server and Database are required.', 'warn'); return; }
+      setButtons(true);
+      showStatus('⏳ Testing connection…', 'info');
+      try {
+        const { status, data } = await runTest(payload);
+        if (status === 403) { showStatus('🔒 Incorrect admin password.', 'err'); return; }
+        if (data.ok) {
+          showStatus(`✅ <strong>Connection OK</strong> — ${data.message}`, 'ok');
+        } else {
+          const detail = data.detail ? `<br><span style="font-size:12px;opacity:.85;">${data.detail}</span>` : '';
+          showStatus(`❌ <strong>Connection failed</strong><br>${data.message}${detail}`, 'err');
+        }
+      } catch (e) {
+        showStatus(`❌ Network error: ${e.message}`, 'err');
+      } finally {
+        setButtons(false);
+      }
+    };
+
+    // ── Test & Save (form submit) ─────────────────────────────────────────────
+    document.getElementById('dbForm').onsubmit = async function (e) {
       e.preventDefault();
-      
-      const adminPwd = document.getElementById('adminPwd').value;
-      // Quick client-side check (server also enforces)
-      if (!adminPwd) {
-        alert('Admin password is required');
+      const payload = buildPayload();
+      if (!payload.adminPassword) { showStatus('⚠️ Enter the admin password first.', 'warn'); return; }
+      if (!payload.host || !payload.database) { showStatus('⚠️ Server and Database are required.', 'warn'); return; }
+
+      // Step 1: Test
+      setButtons(true);
+      showStatus('⏳ <strong>Step 1/2</strong> — Testing connection…', 'info');
+      try {
+        const { status, data: testData } = await runTest(payload);
+        if (status === 403) {
+          showStatus('🔒 Incorrect admin password.', 'err');
+          setButtons(false);
+          return;
+        }
+        if (!testData.ok) {
+          const detail = testData.detail ? `<br><span style="font-size:12px;opacity:.85;">${testData.detail}</span>` : '';
+          showStatus(`❌ <strong>Connection test failed — settings NOT saved</strong><br>${testData.message}${detail}`, 'err');
+          setButtons(false);
+          return;
+        }
+        showStatus(`✅ <strong>Step 1/2 passed</strong> — ${testData.message}<br>⏳ Saving…`, 'ok');
+      } catch (e) {
+        showStatus(`❌ Network error during test: ${e.message}`, 'err');
+        setButtons(false);
         return;
       }
-      
-      const payload = {
-        adminPassword: adminPwd,
-        driver: document.getElementById('dbDriver').value,
-        host: document.getElementById('dbHost').value,
-        database: document.getElementById('dbName').value,
-        trusted: document.getElementById('dbTrusted').checked,
-        username: document.getElementById('dbUser').value || null,
-        password: document.getElementById('dbPass').value || null
-      };
-      
+
+      // Step 2: Save (only reached if test passed)
       try {
         const res = await fetch('/settings/save', {
           method: 'POST',
-          headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify(payload)
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
         });
-        
+        const saveData = await res.json();
         if (res.ok) {
-          const data = await res.json();
-          alert(data.message || 'Settings saved successfully');
-          closeDbModal();
+          showStatus(`✅ <strong>Saved successfully!</strong> SQL Server will be used for authentication.`, 'ok');
           loadDbInfo();
+          setTimeout(closeDbModal, 1800);
         } else {
-          const err = await res.json();
-          alert('Failed to save: ' + (err.detail || 'Unknown error'));
+          showStatus(`❌ <strong>Save failed</strong> (connection was OK)<br>${saveData.detail || JSON.stringify(saveData)}`, 'err');
         }
       } catch (e) {
-        alert('Error saving settings: ' + e.message);
+        showStatus(`❌ Network error during save: ${e.message}`, 'err');
+      } finally {
+        setButtons(false);
       }
     };
     
@@ -370,14 +458,40 @@
           const data = await res.json();
           if (data.token) {
             sessionStorage.setItem('token', data.token);
-            sessionStorage.setItem('role', data.role || 'user');
+            // Prefer role from token payload; fallback to server-provided role
+            try {
+              const parts = data.token.split('.');
+              if (parts.length === 3) {
+                const payload = JSON.parse(atob(parts[1].replace(/-/g, '+').replace(/_/g, '/')));
+                if (payload && payload.role) {
+                  sessionStorage.setItem('role', payload.role);
+                } else {
+                  sessionStorage.setItem('role', data.role || 'user');
+                }
+              } else {
+                sessionStorage.setItem('role', data.role || 'user');
+              }
+            } catch(e) {
+              sessionStorage.setItem('role', data.role || 'user');
+            }
             sessionStorage.setItem('username', u);
             if (data.must_change_password) {
               sessionStorage.setItem('forceChangePassword', '1');
             } else {
               sessionStorage.removeItem('forceChangePassword');
             }
-            window.location.href = '/';
+            // Redirect to intended next URL if provided (e.g., /login?next=/report)
+            try {
+              const params = new URLSearchParams(window.location.search);
+              const next = params.get('next');
+              if (next) {
+                window.location.href = next;
+              } else {
+                window.location.href = '/';
+              }
+            } catch (e) {
+              window.location.href = '/';
+            }
           } else {
             alert('Login failed: No token received');
             loginButton.disabled = false;

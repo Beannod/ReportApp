@@ -25,28 +25,30 @@ def get_database_url_from_settings() -> str:
     host = s.get('host')
     database = s.get('database')
     if host and database:
-        # Build mssql+pyodbc URL (matches api _build_connection_url)
+        # Build a robust ODBC connection string and return as an odbc_connect URL
         driver = s.get('driver', 'ODBC Driver 18 for SQL Server')
-        driver_q = urllib.parse.quote_plus(driver)
-        userinfo = ''
-        if not s.get('trusted', False):
-            u = s.get('username')
-            if u:
-                userinfo = urllib.parse.quote_plus(u)
-                p = s.get('password')
-                if p:
-                    userinfo += ':' + urllib.parse.quote_plus(p)
-                userinfo += '@'
+        # Build the raw ODBC connection string pieces
+        parts = [f"DRIVER={{{driver}}}"]
+        # SERVER must include instance when present
         if '\\' in host:
-            hostport = host
+            parts.append(f"SERVER={host}")
         else:
-            hostport = f"{host}:{s.get('port', 1433)}"
-        params = f"driver={driver_q}"
-        if s.get('encrypt'):
-            params += '&Encrypt=yes'
-        if s.get('trusted', False):
-            params += '&trusted_connection=yes'
-        return f"mssql+pyodbc://{userinfo}{hostport}/{database}?{params}"
+            parts.append(f"SERVER={host},{s.get('port', 1433)}")
+        parts.append(f"DATABASE={database}")
+        if s.get('trusted', True):
+            parts.append('Trusted_Connection=yes')
+        else:
+            uid = s.get('username', '')
+            pwd = s.get('password', '')
+            if uid:
+                parts.append(f'UID={uid}')
+            if pwd:
+                parts.append(f'PWD={pwd}')
+        if s.get('encrypt', False):
+            parts.append('Encrypt=yes')
+        parts.append('TrustServerCertificate=yes')
+        raw = ';'.join(parts)
+        return f"mssql+pyodbc:///?odbc_connect={urllib.parse.quote_plus(raw)}"
     # default sqlite
     return os.environ.get('DATABASE_URL') or 'sqlite:///./reportapp.db'
 
@@ -71,6 +73,8 @@ def get_odbc_connection_string() -> Optional[str]:
             parts.append(f'PWD={pwd}')
     if s.get('encrypt', False):
         parts.append('Encrypt=yes')
+    # Add TrustServerCertificate if present in settings
+    parts.append('TrustServerCertificate=yes')
     return ';'.join(parts)
 
 

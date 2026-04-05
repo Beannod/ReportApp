@@ -10,6 +10,32 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 JWT_SECRET = os.environ.get('JWT_SECRET', 'change-me')
 JWT_ALGO = 'HS256'
 
+import hashlib as _hashlib, base64 as _base64, bcrypt as _bcrypt_lib
+
+def _prep_password(raw: str) -> bytes:
+    """SHA-256 pre-hash → 44-byte base64, well under bcrypt's 72-byte limit."""
+    digest = _hashlib.sha256(raw.encode('utf-8')).digest()
+    return _base64.b64encode(digest)          # 44 bytes
+
+def _hash_password(raw: str) -> str:
+    """Return a bcrypt hash of the SHA-256 pre-hashed password."""
+    return _bcrypt_lib.hashpw(_prep_password(raw), _bcrypt_lib.gensalt()).decode('utf-8')
+
+def _verify_password(raw: str, hashed: str) -> bool:
+    """Verify password against a bcrypt hash (supports both old raw and new pre-hashed)."""
+    hashed_bytes = hashed.encode('utf-8') if isinstance(hashed, str) else hashed
+    # New-style: bcrypt(sha256(raw))
+    try:
+        if _bcrypt_lib.checkpw(_prep_password(raw), hashed_bytes):
+            return True
+    except Exception:
+        pass
+    # Legacy fallback: bcrypt(raw) — accounts created before this change
+    try:
+        return _bcrypt_lib.checkpw(raw.encode('utf-8'), hashed_bytes)
+    except Exception:
+        return False
+
 security = HTTPBearer()
 
 async def get_current_user(creds: HTTPAuthorizationCredentials = Depends(security)):
@@ -137,6 +163,30 @@ async def get_current_admin(user: dict = Depends(get_current_user)):
     return user
 
 
+def user_has_report_access(username: str) -> bool:
+    """Check if a user has access to reports. Admin users always have access."""
+    if not username:
+        return False
+    # Check if user is admin (admins always have access)
+    try:
+        conn = db.get_sqlserver_connection()
+        if conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT role FROM users WHERE username = ?", (username,))
+            row = cursor.fetchone()
+            cursor.close()
+            conn.close()
+            if row and row[0] == 'admin':
+                return True
+    except Exception as e:
+        logger.warning(f"Error checking user role in SQL Server: {e}")
+    
+    # Also check SQLite for role
+    # For now, allow any authenticated user to access reports
+    # This can be extended to check specific permissions in the future
+    return True
+
+
 class LoginIn(BaseModel):
     username: str
     password: str
@@ -222,7 +272,7 @@ def _seed_admin_if_missing(conn):
         count = cur.fetchone()[0]
         if not count or int(count) == 0:
             # Create default admin
-            admin_hash = pwd_context.hash('admin')
+            admin_hash = _hash_password('admin')
             cur.execute(
                 "INSERT INTO dbo.users (username, password_hash, role, created_at, must_change_password) VALUES (?, ?, 'admin', GETDATE(), 1)",
                 ('admin', admin_hash)
@@ -339,6 +389,7 @@ def _get_report_db_conn():
             parts.append(f'PWD={pwd}')
     if s.get('encrypt', False):
         parts.append('Encrypt=yes')
+    parts.append('TrustServerCertificate=yes')
     conn_str = ';'.join(parts)
     try:
         return pyodbc.connect(conn_str, timeout=5)
@@ -409,6 +460,7 @@ def _get_definitions_conn():
             parts.append(f'PWD={pwd}')
     if s.get('encrypt', False):
         parts.append('Encrypt=yes')
+    parts.append('TrustServerCertificate=yes')
     try:
         return pyodbc.connect(';'.join(parts), timeout=5)
     except Exception:
@@ -440,6 +492,7 @@ def _get_report_data_conn():
             parts.append(f'PWD={pwd}')
     if s.get('encrypt', False):
         parts.append('Encrypt=yes')
+    parts.append('TrustServerCertificate=yes')
     try:
         return pyodbc.connect(';'.join(parts), timeout=5)
     except Exception:
@@ -515,7 +568,12 @@ async def list_report_definitions(_user=Depends(get_current_user)):
         conn.close()
 
 @router.post('/report/definitions')
-async def create_report_definition(payload: ReportDefinitionIn, _admin=Depends(get_current_admin)):
+async def create_report_definition(payload: ReportDefinitionIn, current_user: dict = Depends(get_current_user)):
+    # Check permission
+    username = current_user.get('sub') if isinstance(current_user, dict) else None
+    if not check_user_permission(username, 'manage_reports'):
+        raise HTTPException(status_code=403, detail="Permission denied: 'manage_reports' access required")
+    
     conn = _get_definitions_conn()
     if not conn:
         raise HTTPException(status_code=503, detail='Definitions DB connection unavailable')
@@ -534,7 +592,12 @@ async def create_report_definition(payload: ReportDefinitionIn, _admin=Depends(g
         conn.close()
 
 @router.put('/report/definitions/{def_id}')
-async def update_report_definition(def_id: int, payload: ReportDefinitionUpdate, _admin=Depends(get_current_admin)):
+async def update_report_definition(def_id: int, payload: ReportDefinitionUpdate, current_user: dict = Depends(get_current_user)):
+    # Check permission
+    username = current_user.get('sub') if isinstance(current_user, dict) else None
+    if not check_user_permission(username, 'manage_reports'):
+        raise HTTPException(status_code=403, detail="Permission denied: 'manage_reports' access required")
+    
     conn = _get_definitions_conn()
     if not conn:
         raise HTTPException(status_code=503, detail='Definitions DB connection unavailable')
@@ -697,6 +760,12 @@ async def run_report(definition_id: int = Form(...), request: Request = None, _u
     Loads the definition from the definitions DB, then executes the stored procedure
     against the report data DB. Logs execution to `dbo.report_log` in the data DB.
     """
+    # Check permission
+    username = _user.get('sub') if isinstance(_user, dict) else None
+    user_role = (_user.get('role') if isinstance(_user, dict) else None) or ''
+    if user_role != 'admin' and not check_user_permission(username, 'run_reports'):
+        raise HTTPException(status_code=403, detail="Permission denied: 'run_reports' access required")
+    
     # Load definition from definitions DB
     defs_conn = _get_definitions_conn()
     if not defs_conn:
@@ -840,6 +909,7 @@ async def run_report(definition_id: int = Form(...), request: Request = None, _u
             parts.append(f'PWD={pwd}')
     if s.get('encrypt', False):
         parts.append('Encrypt=yes')
+    parts.append('TrustServerCertificate=yes')
     conn_str = ';'.join(parts)
     try:
         return pyodbc.connect(conn_str, timeout=5)
@@ -847,9 +917,14 @@ async def run_report(definition_id: int = Form(...), request: Request = None, _u
         return None
 
 
-@router.get('/report')
-async def report_page(_user=Depends(get_current_user)):
-    """Serve the report generation page."""
+@router.get('/report/page-auth-check')
+async def report_page_auth_check(_user=Depends(get_current_user)):
+    """Authenticated endpoint used for optional page access checks.
+
+    NOTE: The public HTML page route is served by app.main at `/report`.
+    Keeping this endpoint under a non-conflicting path avoids returning
+    raw auth JSON when users browse `/report` directly.
+    """
     frontend_dir = os.path.join(os.path.dirname(__file__), '..', 'frontend')
     path = os.path.abspath(os.path.join(frontend_dir, 'report.html'))
     if not os.path.exists(path):
@@ -898,6 +973,7 @@ async def report_db_diag(_user=Depends(get_current_user)):
             parts.append(f'PWD={pwd}')
     if s.get('encrypt', False):
         parts.append('Encrypt=yes')
+    parts.append('TrustServerCertificate=yes')
     master_conn_str = ';'.join(parts)
 
     # Connect to master and check database existence
@@ -948,6 +1024,7 @@ async def report_db_diag(_user=Depends(get_current_user)):
                 parts.append(f'PWD={pwd}')
         if s.get('encrypt', False):
             parts.append('Encrypt=yes')
+        parts.append('TrustServerCertificate=yes')
         conn = pyodbc.connect(';'.join(parts), timeout=5)
     except Exception as e:
         return JSONResponse(status_code=503, content={
@@ -1013,6 +1090,7 @@ async def report_runtime_db_diag(_user=Depends(get_current_user)):
             parts.append(f'PWD={pwd}')
     if s.get('encrypt', False):
         parts.append('Encrypt=yes')
+    parts.append('TrustServerCertificate=yes')
     master_conn_str = ';'.join(parts)
 
     try:
@@ -1058,6 +1136,7 @@ async def report_runtime_db_diag(_user=Depends(get_current_user)):
                 parts.append(f'PWD={pwd}')
         if s.get('encrypt', False):
             parts.append('Encrypt=yes')
+        parts.append('TrustServerCertificate=yes')
         conn = pyodbc.connect(';'.join(parts), timeout=5)
     except Exception as e:
         return JSONResponse(status_code=503, content={
@@ -1107,6 +1186,7 @@ async def list_databases(_admin=Depends(get_current_admin)):
             parts.append(f'PWD={pwd}')
     if s.get('encrypt', False):
         parts.append('Encrypt=yes')
+    parts.append('TrustServerCertificate=yes')
     try:
         conn = pyodbc.connect(';'.join(parts), timeout=5)
         cur = conn.cursor()
@@ -1259,7 +1339,7 @@ async def login(payload: LoginIn):
             
             if row:
                 user_id, username, password_hash, role, must_change = row
-                if pwd_context.verify(payload.password, password_hash):
+                if _verify_password(payload.password, password_hash):
                     logger.info(f"Login successful (SQL Server): {username} with role {role}")
                     token = create_token({'sub': username, 'role': role})
                     return {'token': token, 'role': role, 'must_change_password': bool(must_change)}
@@ -1283,7 +1363,7 @@ async def login(payload: LoginIn):
             if not user:
                 logger.warning(f"User not found in SQLite: {payload.username}")
                 raise HTTPException(status_code=401, detail='Invalid credentials')
-            if not pwd_context.verify(payload.password, user['password_hash']):
+            if not _verify_password(payload.password, user['password_hash']):
                 logger.warning(f"Invalid password for user: {payload.username}")
                 raise HTTPException(status_code=401, detail='Invalid credentials')
             user_role = user['role'] if 'role' in user._mapping else 'user'
@@ -1338,6 +1418,49 @@ async def get_sheet_names(file: UploadFile = File(...)):
         raise
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Failed to read Excel file: {e}")
+
+
+@router.post('/get-columns')
+async def get_columns(
+    file: UploadFile = File(...),
+    sheet_name: Optional[str] = Form(None)
+):
+    """Return only column names from a file (no data rows).
+    
+    This is a lightweight endpoint for the Create Table feature.
+    Column names are taken from the first row of the file.
+    """
+    try:
+        content = await file.read()
+        file_ext = os.path.splitext(file.filename)[1].lower()
+        
+        columns = []
+        
+        if file_ext in ['.xlsx', '.xls']:
+            read_kwargs = {'nrows': 1}  # Read just 1 row to get headers
+            if sheet_name:
+                read_kwargs['sheet_name'] = sheet_name
+            try:
+                df = pd.read_excel(io.BytesIO(content), **read_kwargs)
+                columns = [str(c) for c in df.columns]  # Convert to strings
+            except Exception as e:
+                raise HTTPException(status_code=400, detail=f"Failed to read Excel file: {e}")
+        elif file_ext == '.csv':
+            try:
+                df = pd.read_csv(io.BytesIO(content), nrows=1)  # Read just 1 row
+                columns = [str(c) for c in df.columns]  # Convert to strings
+            except Exception as e:
+                raise HTTPException(status_code=400, detail=f"Failed to read CSV file: {e}")
+        else:
+            raise HTTPException(status_code=400, detail="Unsupported file type. Please upload CSV or Excel.")
+        
+        return {'columns': columns}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Get columns failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to get columns: {e}")
 
 
 @router.post('/import-preview')
@@ -1607,9 +1730,15 @@ async def import_data(
     table_name: Optional[str] = Form(None),
     create_new: Optional[str] = Form(None),
     sheet_name: Optional[str] = Form(None),
+    duplicate_action: Optional[str] = Form(None),  # 'append', 'overwrite', or 'skip'
     current_user: dict = Depends(get_current_user)
 ):
     """Import CSV files into SQL Server table using PowerShell"""
+    # Check permission
+    username = current_user.get('sub') if isinstance(current_user, dict) else None
+    if not check_user_permission(username, 'import_data'):
+        raise HTTPException(status_code=403, detail="Permission denied: 'import_data' access required")
+    
     try:
         if not files:
             logger.info("Import data called with no files")
@@ -1659,45 +1788,55 @@ async def import_data(
             file_size = len(content) if content is not None else 0
 
             # Duplicate check in SQL Server import_log (by file_name, table_name, file_size, success)
-            try:
-                conn = db.get_sqlserver_connection()
-                if conn:
-                    cur = conn.cursor()
-                    try:
-                        cur.execute(
-                            """
-                            IF OBJECT_ID('dbo.import_log', 'U') IS NOT NULL
-                            SELECT TOP 1 id FROM dbo.import_log
-                            WHERE file_name = ? AND table_name = ? AND file_size = ? AND status = 'success'
-                            ORDER BY finished_at DESC
-                            ELSE SELECT NULL
-                            """,
-                            (f.filename, target_table, file_size)
-                        )
-                        dup = cur.fetchone()
-                        if dup and dup[0] is not None:
-                            logger.info(f"Skipping duplicate import for file {f.filename} into {target_table} (size {file_size} bytes)")
-                            results.append({
-                                'file': f.filename,
-                                'success': False,
-                                'error': 'This file was already imported for this table with the same size.',
-                                'duplicate': True,
-                            })
-                            cur.close()
-                            conn.close()
-                            continue
-                    finally:
+            # Skip check if duplicate_action is 'append' or 'overwrite'
+            skip_duplicate_check = duplicate_action in ('append', 'overwrite')
+            should_truncate = duplicate_action == 'overwrite'
+            
+            if not skip_duplicate_check:
+                try:
+                    conn = db.get_sqlserver_connection()
+                    if conn:
+                        cur = conn.cursor()
                         try:
-                            cur.close()
-                        except Exception:
-                            pass
-                        try:
-                            conn.close()
-                        except Exception:
-                            pass
-            except Exception:
-                # Duplicate check failures should not block import; just log
-                logger.warning("Duplicate import check failed; proceeding without dedupe", exc_info=True)
+                            cur.execute(
+                                """
+                                IF OBJECT_ID('dbo.import_log', 'U') IS NOT NULL
+                                SELECT TOP 1 id, rows_imported, finished_at FROM dbo.import_log
+                                WHERE file_name = ? AND table_name = ? AND file_size = ? AND status = 'success'
+                                ORDER BY finished_at DESC
+                                ELSE SELECT NULL, NULL, NULL
+                                """,
+                                (f.filename, target_table, file_size)
+                            )
+                            dup = cur.fetchone()
+                            if dup and dup[0] is not None:
+                                logger.info(f"Duplicate detected for file {f.filename} into {target_table} (size {file_size} bytes)")
+                                results.append({
+                                    'file': f.filename,
+                                    'success': False,
+                                    'error': 'This file was already imported for this table with the same size.',
+                                    'duplicate': True,
+                                    'options': ['append', 'overwrite', 'skip'],
+                                    'duplicate_info': {
+                                        'rows_imported': dup[1],
+                                        'imported_at': dup[2].isoformat() if dup[2] else None
+                                    }
+                                })
+                                cur.close()
+                                conn.close()
+                                continue
+                        finally:
+                            try:
+                                cur.close()
+                            except Exception:
+                                pass
+                            try:
+                                conn.close()
+                            except Exception:
+                                pass
+                except Exception:
+                    # Duplicate check failures should not block import; just log
+                    logger.warning("Duplicate import check failed; proceeding without dedupe", exc_info=True)
             
             if file_ext in ['.xlsx', '.xls']:
                 # Convert Excel to CSV
@@ -1728,8 +1867,14 @@ async def import_data(
                         else:
                             col_str = str(col).strip()
                         
-                        # Remove invalid SQL column name characters
-                        col_str = col_str.replace('[', '').replace(']', '').replace(',', '_')
+                        # Sanitize column names - replace any non-alphanumeric chars (except underscore) with underscore
+                        # This must match the logic in /create-table endpoint
+                        import re
+                        col_str = re.sub(r'[^a-zA-Z0-9_]', '_', col_str)
+                        
+                        # Ensure column name starts with a letter
+                        if col_str and not col_str[0].isalpha():
+                            col_str = 'col_' + col_str
                         
                         if col_str in col_counts:
                             col_counts[col_str] += 1
@@ -1747,6 +1892,63 @@ async def import_data(
                     
                     logger.info(f"Final columns ({len(df.columns)} total): {list(df.columns)}")
                     logger.info(f"DataFrame shape: {df.shape} (rows, columns)")
+                    
+                    # Create import_log entry FIRST to get import_log_id for tracking
+                    import_log_id = None
+                    import_start_time = datetime.datetime.now()
+                    column_names_list = list(df.columns)
+                    column_types_list = [str(df[col].dtype) for col in df.columns]
+                    rows_total = len(df)
+                    columns_count = len(df.columns)
+                    
+                    try:
+                        conn_log = db.get_sqlserver_connection()
+                        if conn_log:
+                            cur_log = conn_log.cursor()
+                            try:
+                                cur_log.execute(
+                                    """
+                                    INSERT INTO dbo.import_log
+                                        (file_name, file_size, file_type, sheet_name, table_name, database_name,
+                                         create_new_table, rows_total, rows_imported, columns_imported, column_names,
+                                         column_types, user_name, status, started_at, finished_at)
+                                    OUTPUT INSERTED.id
+                                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, 'started', GETDATE(), NULL)
+                                    """,
+                                    (
+                                        f.filename,
+                                        file_size,
+                                        file_ext.replace('.', ''),
+                                        sheet_name or '',
+                                        target_table,
+                                        settings.get('database', ''),
+                                        1 if create_new == 'true' else 0,
+                                        rows_total,
+                                        columns_count,
+                                        ','.join(column_names_list)[:4000],
+                                        ','.join(column_types_list)[:4000],
+                                        (current_user or {}).get('sub') or (current_user or {}).get('username') or 'unknown',
+                                    )
+                                )
+                                row = cur_log.fetchone()
+                                if row:
+                                    import_log_id = row[0]
+                                conn_log.commit()
+                            finally:
+                                try:
+                                    cur_log.close()
+                                except Exception:
+                                    pass
+                                try:
+                                    conn_log.close()
+                                except Exception:
+                                    pass
+                    except Exception:
+                        logger.warning("Failed to insert initial import_log row", exc_info=True)
+                    
+                    # Add _import_id column to track which import this data came from
+                    if import_log_id is not None:
+                        df['_import_id'] = import_log_id
                     
                     # Insert directly to SQL Server using pandas + pyodbc (skip CSV/PowerShell)
                     try:
@@ -1768,19 +1970,60 @@ async def import_data(
                         )
                         engine = create_engine(f"mssql+pyodbc:///?odbc_connect={params}", fast_executemany=True)
                         
+                        # Determine if_exists mode based on duplicate_action
+                        # 'overwrite' -> replace the table (truncate + insert)
+                        # 'append' -> append to existing table
+                        # default (new table) -> replace
+                        if should_truncate:
+                            sql_if_exists = 'replace'
+                            logger.info(f"Overwrite mode: will replace table {target_table}")
+                        elif duplicate_action == 'append':
+                            sql_if_exists = 'append'
+                            logger.info(f"Append mode: will add to table {target_table}")
+                        elif create_new == 'true':
+                            sql_if_exists = 'replace'
+                        else:
+                            sql_if_exists = 'append'  # Default to append for existing tables
+                        
+                        # For append mode, filter DataFrame columns to match existing table columns
+                        if sql_if_exists == 'append':
+                            try:
+                                with engine.connect() as conn:
+                                    # Get existing table columns
+                                    result = conn.execute(text(f"SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = '{target_table}'"))
+                                    existing_cols = [row[0] for row in result.fetchall()]
+                                    if existing_cols:
+                                        # Filter DataFrame to only include columns that exist in target table
+                                        matching_cols = [c for c in df.columns if c in existing_cols]
+                                        missing_in_table = [c for c in df.columns if c not in existing_cols]
+                                        extra_in_table = [c for c in existing_cols if c not in df.columns and c != '_id']
+                                        
+                                        if missing_in_table:
+                                            logger.warning(f"Columns in file but not in table (will be skipped): {missing_in_table}")
+                                        if extra_in_table:
+                                            logger.warning(f"Columns in table but not in file: {extra_in_table}")
+                                        
+                                        if matching_cols:
+                                            df = df[matching_cols]
+                                            logger.info(f"Filtered to {len(matching_cols)} matching columns: {matching_cols}")
+                                        else:
+                                            raise ValueError(f"No matching columns between file and table. File has: {list(df.columns)}, Table has: {existing_cols}")
+                            except Exception as col_err:
+                                logger.warning(f"Could not check table columns: {col_err}")
+                        
                         # Insert data using pandas to_sql
-                        logger.info(f"Inserting {len(df)} rows into {table_name}...")
+                        logger.info(f"Inserting {len(df)} rows into {target_table} (mode: {sql_if_exists})...")
                         df.to_sql(
-                            name=table_name,
+                            name=target_table,
                             con=engine,
-                            if_exists='replace',  # Create new table or replace existing
+                            if_exists=sql_if_exists,
                             index=False,
                             chunksize=1000,
                             method='multi'
                         )
                         
                         rows_imported = len(df)
-                        logger.info(f"Successfully inserted {rows_imported} rows into {table_name}")
+                        logger.info(f"Successfully inserted {rows_imported} rows into {target_table}")
                         
                         # No need for PowerShell anymore, skip tmp_path creation
                         tmp_path = None
@@ -1810,14 +2053,22 @@ async def import_data(
                     df = df.dropna(axis=0, how='all')
                     df = df.reset_index(drop=True)
                     
-                    # Fix column names
+                    # Fix column names - sanitize to match create-table logic
+                    import re
                     new_cols = []
                     col_counts = {}
                     for idx, col in enumerate(df.columns):
                         if pd.isna(col) or str(col).strip() == '' or str(col).startswith('Unnamed:'):
                             col_str = f"Column_{idx+1}"
                         else:
-                            col_str = str(col).strip().replace('[', '').replace(']', '').replace(',', '_')
+                            col_str = str(col).strip()
+                        
+                        # Sanitize column names - replace any non-alphanumeric chars (except underscore) with underscore
+                        col_str = re.sub(r'[^a-zA-Z0-9_]', '_', col_str)
+                        
+                        # Ensure column name starts with a letter
+                        if col_str and not col_str[0].isalpha():
+                            col_str = 'col_' + col_str
                         
                         if col_str in col_counts:
                             col_counts[col_str] += 1
@@ -1888,6 +2139,14 @@ async def import_data(
             
             # Prepare to log this import attempt in SQL Server
             import_log_id = None
+            import_start_time = datetime.datetime.now()
+            
+            # Gather column info for logging
+            column_names_list = list(df.columns) if df is not None else []
+            column_types_list = [str(df[col].dtype) for col in df.columns] if df is not None else []
+            rows_total = len(df) if df is not None else 0
+            columns_count = len(df.columns) if df is not None else 0
+            
             try:
                 conn_log = db.get_sqlserver_connection()
                 if conn_log:
@@ -1896,15 +2155,25 @@ async def import_data(
                         cur_log.execute(
                             """
                             INSERT INTO dbo.import_log
-                                (file_name, table_name, user_name, file_size, rows_imported, status, started_at, finished_at)
+                                (file_name, file_size, file_type, sheet_name, table_name, database_name,
+                                 create_new_table, rows_total, rows_imported, columns_imported, column_names,
+                                 column_types, user_name, status, started_at, finished_at)
                             OUTPUT INSERTED.id
-                            VALUES (?, ?, ?, ?, 0, 'started', GETDATE(), NULL)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, 'started', GETDATE(), NULL)
                             """,
                             (
                                 f.filename,
-                                target_table,
-                                (current_user or {}).get('sub') or (current_user or {}).get('username') or 'unknown',
                                 file_size,
+                                file_ext.replace('.', ''),  # file type without dot
+                                sheet_name or '',
+                                target_table,
+                                settings.get('database', ''),
+                                1 if create_new == 'true' else 0,
+                                rows_total,
+                                columns_count,
+                                ','.join(column_names_list)[:4000],  # Limit to 4000 chars
+                                ','.join(column_types_list)[:4000],  # Limit to 4000 chars
+                                (current_user or {}).get('sub') or (current_user or {}).get('username') or 'unknown',
                             )
                         )
                         row = cur_log.fetchone()
@@ -1938,6 +2207,7 @@ async def import_data(
                 # Update import_log
                 try:
                     if import_log_id is not None:
+                        duration_ms = int((datetime.datetime.now() - import_start_time).total_seconds() * 1000)
                         conn_upd = db.get_sqlserver_connection()
                         if conn_upd:
                             cur_upd = conn_upd.cursor()
@@ -1947,10 +2217,11 @@ async def import_data(
                                     UPDATE dbo.import_log
                                     SET rows_imported = ?,
                                         status = 'success',
-                                        finished_at = GETDATE()
+                                        finished_at = GETDATE(),
+                                        duration_ms = ?
                                     WHERE id = ?
                                     """,
-                                    (rows_imported, import_log_id)
+                                    (rows_imported, duration_ms, import_log_id)
                                 )
                                 conn_upd.commit()
                             finally:
@@ -1985,6 +2256,16 @@ $TableName = "{target_table}"
 $CsvPath = "{tmp_path.replace(chr(92), chr(92)+chr(92))}"
 $CreateNew = {create_new_flag}
 
+# Function to sanitize column name (must match Python logic)
+function Sanitize-ColumnName {{
+    param([string]$name)
+    $sanitized = $name -replace '[^a-zA-Z0-9_]', '_'
+    if ($sanitized -and $sanitized[0] -notmatch '[a-zA-Z]') {{
+        $sanitized = "col_$sanitized"
+    }}
+    return $sanitized
+}}
+
 try {{
     # Import CSV
     $data = Import-Csv -Path $CsvPath
@@ -2000,10 +2281,22 @@ try {{
     $conn = New-Object System.Data.SqlClient.SqlConnection($connString)
     $conn.Open()
     
+    # Get existing table columns (for filtering)
+    $existingCols = @()
+    if (-not $CreateNew) {{
+        $colSql = "SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = '$TableName'"
+        $colCmd = New-Object System.Data.SqlClient.SqlCommand($colSql, $conn)
+        $reader = $colCmd.ExecuteReader()
+        while ($reader.Read()) {{
+            $existingCols += $reader["COLUMN_NAME"]
+        }}
+        $reader.Close()
+    }}
+    
     # Create table if needed
     if ($CreateNew) {{
-        # Get column names from first row
-        $columns = $data[0].PSObject.Properties | ForEach-Object {{ $_.Name }}
+        # Get column names from first row and sanitize them
+        $columns = $data[0].PSObject.Properties | ForEach-Object {{ Sanitize-ColumnName $_.Name }}
         
         # Check if table exists
         $checkSql = "IF OBJECT_ID('$TableName', 'U') IS NOT NULL SELECT 1 ELSE SELECT 0"
@@ -2018,20 +2311,39 @@ try {{
             $createCmd = New-Object System.Data.SqlClient.SqlCommand($createSql, $conn)
             $createCmd.ExecuteNonQuery() | Out-Null
         }}
+        # Use all columns for new table
+        $existingCols = $columns
     }}
     
     $rowCount = 0
     
     foreach ($row in $data) {{
-        # Build INSERT statement dynamically
-        $columns = ($row.PSObject.Properties | ForEach-Object {{ "[$($_.Name)]" }}) -join ', '
-        $values = ($row.PSObject.Properties | ForEach-Object {{ 
-            $val = $_.Value
-            if ([string]::IsNullOrEmpty($val)) {{ "NULL" }} 
-            else {{ "'" + $val.Replace("'", "''") + "'" }}
-        }}) -join ', '
+        # Build INSERT statement with only columns that exist in table
+        $colNames = @()
+        $colValues = @()
         
-        $sql = "INSERT INTO $TableName ($columns) VALUES ($values)"
+        foreach ($prop in $row.PSObject.Properties) {{
+            $sanitizedName = Sanitize-ColumnName $prop.Name
+            
+            # Skip if column doesn't exist in target table
+            if ($existingCols.Count -gt 0 -and $sanitizedName -notin $existingCols) {{
+                continue
+            }}
+            
+            $colNames += "[$sanitizedName]"
+            $val = $prop.Value
+            if ([string]::IsNullOrEmpty($val)) {{
+                $colValues += "NULL"
+            }} else {{
+                $colValues += "'" + $val.Replace("'", "''") + "'"
+            }}
+        }}
+        
+        if ($colNames.Count -eq 0) {{
+            continue
+        }}
+        
+        $sql = "INSERT INTO $TableName ($($colNames -join ', ')) VALUES ($($colValues -join ', '))"
         
         $cmd = New-Object System.Data.SqlClient.SqlCommand($sql, $conn)
         $cmd.ExecuteNonQuery() | Out-Null
@@ -2076,6 +2388,7 @@ try {{
                 # Update import_log entry if we created one
                 try:
                     if import_log_id is not None:
+                        duration_ms = int((datetime.datetime.now() - import_start_time).total_seconds() * 1000)
                         conn_upd = db.get_sqlserver_connection()
                         if conn_upd:
                             cur_upd = conn_upd.cursor()
@@ -2085,12 +2398,14 @@ try {{
                                     UPDATE dbo.import_log
                                     SET rows_imported = ?,
                                         status = ?,
-                                        finished_at = GETDATE()
+                                        finished_at = GETDATE(),
+                                        duration_ms = ?
                                     WHERE id = ?
                                     """,
                                     (
                                         int(result.stdout.strip() or '0') if result.returncode == 0 else 0,
                                         'success' if result.returncode == 0 else 'failed',
+                                        duration_ms,
                                         import_log_id,
                                     )
                                 )
@@ -2232,6 +2547,103 @@ async def get_settings_info():
 ADMIN_SETTINGS_PASSWORD = os.environ.get('ADMIN_SETTINGS_PASSWORD', '1234567890')
 
 
+@router.post('/settings/test-public')
+async def test_settings_public(payload: SettingsUpdateIn, request: Request):
+    """Test a DB connection without requiring a logged-in session.
+    Authenticates via adminPassword in the request body (same as /settings/save).
+    Always appends TrustServerCertificate=yes so Driver 18 self-signed certs work.
+    """
+    # Auth: accept either a valid admin Bearer token OR the admin password
+    is_admin_token = False
+    auth_header = request.headers.get('Authorization')
+    if auth_header and auth_header.lower().startswith('bearer '):
+        token = auth_header.split(' ', 1)[1]
+        try:
+            jwt_payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGO])
+            if jwt_payload.get('role') == 'admin':
+                is_admin_token = True
+        except JWTError:
+            pass
+
+    if not is_admin_token:
+        if (payload.adminPassword or '').strip() != ADMIN_SETTINGS_PASSWORD:
+            raise HTTPException(status_code=403, detail='Invalid admin password')
+
+    try:
+        import pyodbc
+        available_drivers = [d for d in pyodbc.drivers()]
+    except Exception as e:
+        return {'ok': False, 'message': f'pyodbc not available on server: {e}'}
+
+    chosen_driver = payload.driver or 'ODBC Driver 18 for SQL Server'
+    if chosen_driver not in available_drivers:
+        for cand in ['ODBC Driver 18 for SQL Server', 'ODBC Driver 17 for SQL Server']:
+            if cand in available_drivers:
+                chosen_driver = cand
+                break
+
+    if '\\' in (payload.host or ''):
+        server_part = f'SERVER={payload.host}'
+    else:
+        server_part = f'SERVER={payload.host},{payload.port or 1433}'
+
+    parts = [
+        f'DRIVER={{{chosen_driver}}}',
+        server_part,
+        f'DATABASE={payload.database}',
+    ]
+    if payload.trusted:
+        parts.append('Trusted_Connection=yes')
+    else:
+        if payload.username:
+            parts.append(f'UID={payload.username}')
+        if payload.password:
+            parts.append(f'PWD={payload.password}')
+    if payload.encrypt:
+        parts.append('Encrypt=yes')
+    # Always trust self-signed certs (Driver 18 defaults Encrypt=yes)
+    parts.append('TrustServerCertificate=yes')
+
+    conn_str = ';'.join(parts)
+    try:
+        cn = pyodbc.connect(conn_str, timeout=5)
+        # Verify tables the app depends on exist
+        cur = cn.cursor()
+        cur.execute("SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_TYPE='BASE TABLE'")
+        row = cur.fetchone()
+        table_count = int(row[0] or 0) if row else 0
+        cur.execute('SELECT DB_NAME()')
+        row = cur.fetchone()
+        actual_db = row[0] if row else payload.database
+        cn.close()
+        return {
+            'ok': True,
+            'message': f'Connected to "{actual_db}" ({table_count} tables)',
+            'database': actual_db,
+            'tables': table_count,
+            'used_driver': chosen_driver,
+        }
+    except Exception as e:
+        error_msg = str(e)
+        if 'Login failed' in error_msg:
+            if 'Cannot open database' in error_msg:
+                import re as _re
+                m = _re.search(r'Cannot open database "([^"]+)"', error_msg)
+                db_name = m.group(1) if m else payload.database
+                error_msg = f'Database "{db_name}" does not exist or you lack permission.'
+            elif payload.trusted:
+                error_msg = f'Windows Authentication failed. Ensure this Windows user has SQL Server access.'
+            else:
+                error_msg = f'Login failed for user "{payload.username}". Check credentials.'
+        elif 'SSL Provider' in error_msg or 'certificate' in error_msg.lower():
+            error_msg = 'TLS/SSL certificate error. Try enabling "Encrypt" or check server certificate.'
+        elif 'SQL Server does not exist' in error_msg or 'Named Pipes' in error_msg:
+            error_msg = f'Cannot reach server "{payload.host}". Verify it is running and the name is correct.'
+        elif 'Data source name not found' in error_msg:
+            error_msg = f'ODBC driver "{chosen_driver}" not found. Install it on this machine.'
+        return {'ok': False, 'message': error_msg, 'detail': str(e)}
+
+
 @router.post('/settings/save')
 async def save_settings(payload: SettingsUpdateIn, request: Request):
     """Save settings. Requires correct adminPassword in request body."""
@@ -2324,6 +2736,7 @@ async def test_settings(payload: SettingsIn, _admin=Depends(get_current_admin)):
     
     if payload.encrypt:
         conn_parts.append('Encrypt=yes')
+        conn_parts.append('TrustServerCertificate=yes')
     conn_str = ';'.join(conn_parts)
     try:
         logger.info(f"Attempting connection with driver: {chosen_driver}")
@@ -2442,7 +2855,7 @@ async def list_databases(payload: SettingsIn, _admin=Depends(get_current_admin))
 async def create_user(username: str = Form(...), password: str = Form(...), role: str = Form('user'), _admin=Depends(get_current_admin)):
     try:
         logger.info(f"Creating user: {username} with role: {role}")
-        hashed = pwd_context.hash(password)
+        hashed = _hash_password(password)
         
         # Create user in SQL Server
         conn = db.get_sqlserver_connection()
@@ -2571,7 +2984,7 @@ async def update_user(
         
         # Update user
         if password:
-            hashed = pwd_context.hash(password)
+            hashed = _hash_password(password)
             cursor.execute(
                 "UPDATE users SET username = ?, password_hash = ?, role = ?, must_change_password = 0 WHERE id = ?",
                 (username, hashed, role, user_id)
@@ -2648,6 +3061,458 @@ async def delete_user(user_id: int, _admin=Depends(get_current_admin)):
         raise HTTPException(status_code=500, detail=f"Failed to delete user: {msg}")
 
 
+# ========== User Permissions Management ==========
+
+# Available permission names
+AVAILABLE_PERMISSIONS = [
+    'import_data',      # Can import data files
+    'create_table',     # Can create new tables
+    'delete_table',     # Can delete tables
+    'run_reports',      # Can run reports
+    'view_powerbi',     # Can view Power BI reports
+    'manage_reports',   # Can create/edit report definitions
+    'view_dashboard',   # Can view dashboard
+]
+
+
+def _ensure_permissions_table(conn):
+    """Ensure user_permissions table exists."""
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            IF OBJECT_ID('dbo.user_permissions', 'U') IS NULL
+            BEGIN
+                CREATE TABLE dbo.user_permissions (
+                    id              INT IDENTITY(1,1) PRIMARY KEY,
+                    user_id         INT           NOT NULL,
+                    permission_name NVARCHAR(100) NOT NULL,
+                    granted         BIT           NOT NULL DEFAULT 1,
+                    granted_by      NVARCHAR(100) NULL,
+                    granted_at      DATETIME2     DEFAULT GETDATE(),
+                    CONSTRAINT UQ_user_permission UNIQUE (user_id, permission_name)
+                )
+            END
+        """)
+        conn.commit()
+        cur.close()
+    except Exception as e:
+        logger.warning(f"Could not ensure permissions table: {e}")
+        try:
+            cur.close()
+        except:
+            pass
+
+
+def check_user_permission(username: str, permission_name: str) -> bool:
+    """Check if a user has a specific permission. Admins always have all permissions."""
+    if not username:
+        return False
+    
+    try:
+        conn = db.get_sqlserver_connection()
+        if not conn:
+            return False
+        
+        cursor = conn.cursor()
+        
+        # Check if user is admin (admins have all permissions)
+        cursor.execute("SELECT role FROM users WHERE username = ?", (username,))
+        row = cursor.fetchone()
+        if row and row[0] == 'admin':
+            cursor.close()
+            conn.close()
+            return True
+        
+        # Get user ID
+        cursor.execute("SELECT id FROM users WHERE username = ?", (username,))
+        user_row = cursor.fetchone()
+        if not user_row:
+            cursor.close()
+            conn.close()
+            return False
+        
+        user_id = user_row[0]
+        
+        # Check permission
+        cursor.execute(
+            "SELECT granted FROM user_permissions WHERE user_id = ? AND permission_name = ?",
+            (user_id, permission_name)
+        )
+        perm_row = cursor.fetchone()
+        cursor.close()
+        conn.close()
+        
+        if perm_row:
+            return bool(perm_row[0])
+        
+        # Default: no permission if not explicitly granted
+        return False
+        
+    except Exception as e:
+        logger.warning(f"Error checking permission {permission_name} for {username}: {e}")
+        return False
+
+
+async def require_permission(permission_name: str, user: dict = Depends(get_current_user)):
+    """Dependency to require a specific permission."""
+    username = user.get('sub') if isinstance(user, dict) else None
+    if not check_user_permission(username, permission_name):
+        raise HTTPException(
+            status_code=403,
+            detail=f"Permission denied: {permission_name} access required"
+        )
+    return user
+
+
+@router.get('/permissions/available')
+async def get_available_permissions(_user=Depends(get_current_user)):
+    """Get list of all available permission names."""
+    return {
+        'permissions': AVAILABLE_PERMISSIONS,
+        'descriptions': {
+            'import_data': 'Can import data files (CSV, Excel)',
+            'create_table': 'Can create new database tables',
+            'delete_table': 'Can delete database tables',
+            'run_reports': 'Can run stored procedure reports',
+            'view_powerbi': 'Can view embedded Power BI reports',
+            'manage_reports': 'Can create and edit report definitions',
+            'view_dashboard': 'Can view the dashboard summary',
+        }
+    }
+
+
+@router.get('/permissions/user/{user_id}')
+async def get_user_permissions(user_id: int, _admin=Depends(get_current_admin)):
+    """Get all permissions for a specific user."""
+    try:
+        conn = db.get_sqlserver_connection()
+        if not conn:
+            raise HTTPException(status_code=503, detail="SQL Server not available")
+        
+        _ensure_permissions_table(conn)
+        cursor = conn.cursor()
+        
+        # Get user info
+        cursor.execute("SELECT username, role FROM users WHERE id = ?", (user_id,))
+        user_row = cursor.fetchone()
+        if not user_row:
+            cursor.close()
+            conn.close()
+            raise HTTPException(status_code=404, detail=f"User ID {user_id} not found")
+        
+        username, role = user_row[0], user_row[1]
+        
+        # Get permissions
+        cursor.execute(
+            "SELECT permission_name, granted, granted_by, granted_at FROM user_permissions WHERE user_id = ?",
+            (user_id,)
+        )
+        rows = cursor.fetchall()
+        
+        permissions = {}
+        for row in rows:
+            permissions[row[0]] = {
+                'granted': bool(row[1]),
+                'granted_by': row[2],
+                'granted_at': str(row[3]) if row[3] else None
+            }
+        
+        cursor.close()
+        conn.close()
+        
+        # For admins, all permissions are implicitly granted
+        if role == 'admin':
+            for perm in AVAILABLE_PERMISSIONS:
+                if perm not in permissions:
+                    permissions[perm] = {'granted': True, 'granted_by': 'admin_role', 'granted_at': None}
+        
+        return {
+            'user_id': user_id,
+            'username': username,
+            'role': role,
+            'permissions': permissions,
+            'is_admin': role == 'admin'
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        msg = str(e)
+        logger.error(f"Error getting permissions for user {user_id}: {msg}")
+        raise HTTPException(status_code=500, detail=f"Failed to get permissions: {msg}")
+
+
+class PermissionUpdate(BaseModel):
+    permission_name: str
+    granted: bool
+
+
+@router.post('/permissions/user/{user_id}')
+async def set_user_permission(
+    user_id: int,
+    perm: PermissionUpdate,
+    _admin=Depends(get_current_admin)
+):
+    """Set a permission for a specific user."""
+    try:
+        if perm.permission_name not in AVAILABLE_PERMISSIONS:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid permission name. Available: {AVAILABLE_PERMISSIONS}"
+            )
+        
+        conn = db.get_sqlserver_connection()
+        if not conn:
+            raise HTTPException(status_code=503, detail="SQL Server not available")
+        
+        _ensure_permissions_table(conn)
+        cursor = conn.cursor()
+        
+        # Check if user exists
+        cursor.execute("SELECT username FROM users WHERE id = ?", (user_id,))
+        user_row = cursor.fetchone()
+        if not user_row:
+            cursor.close()
+            conn.close()
+            raise HTTPException(status_code=404, detail=f"User ID {user_id} not found")
+        
+        username = user_row[0]
+        admin_username = _admin.get('sub', 'admin')
+        
+        # Upsert permission (SQL Server MERGE)
+        cursor.execute("""
+            MERGE INTO user_permissions AS target
+            USING (SELECT ? AS user_id, ? AS permission_name) AS source
+            ON target.user_id = source.user_id AND target.permission_name = source.permission_name
+            WHEN MATCHED THEN
+                UPDATE SET granted = ?, granted_by = ?, granted_at = GETDATE()
+            WHEN NOT MATCHED THEN
+                INSERT (user_id, permission_name, granted, granted_by, granted_at)
+                VALUES (?, ?, ?, ?, GETDATE());
+        """, (
+            user_id, perm.permission_name,
+            1 if perm.granted else 0, admin_username,
+            user_id, perm.permission_name, 1 if perm.granted else 0, admin_username
+        ))
+        conn.commit()
+        cursor.close()
+        conn.close()
+        
+        action = "granted" if perm.granted else "revoked"
+        logger.info(f"Permission {perm.permission_name} {action} for user {username} by {admin_username}")
+        
+        return {
+            'success': True,
+            'message': f"Permission '{perm.permission_name}' {action} for user '{username}'"
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        msg = str(e)
+        logger.error(f"Error setting permission for user {user_id}: {msg}")
+        raise HTTPException(status_code=500, detail=f"Failed to set permission: {msg}")
+
+
+@router.post('/permissions/user/{user_id}/bulk')
+async def set_user_permissions_bulk(
+    user_id: int,
+    permissions: List[PermissionUpdate],
+    _admin=Depends(get_current_admin)
+):
+    """Set multiple permissions for a user at once."""
+    try:
+        conn = db.get_sqlserver_connection()
+        if not conn:
+            raise HTTPException(status_code=503, detail="SQL Server not available")
+        
+        _ensure_permissions_table(conn)
+        cursor = conn.cursor()
+        
+        # Check if user exists
+        cursor.execute("SELECT username FROM users WHERE id = ?", (user_id,))
+        user_row = cursor.fetchone()
+        if not user_row:
+            cursor.close()
+            conn.close()
+            raise HTTPException(status_code=404, detail=f"User ID {user_id} not found")
+        
+        username = user_row[0]
+        admin_username = _admin.get('sub', 'admin')
+        
+        results = []
+        for perm in permissions:
+            if perm.permission_name not in AVAILABLE_PERMISSIONS:
+                results.append({'permission': perm.permission_name, 'success': False, 'error': 'Invalid permission name'})
+                continue
+            
+            try:
+                cursor.execute("""
+                    MERGE INTO user_permissions AS target
+                    USING (SELECT ? AS user_id, ? AS permission_name) AS source
+                    ON target.user_id = source.user_id AND target.permission_name = source.permission_name
+                    WHEN MATCHED THEN
+                        UPDATE SET granted = ?, granted_by = ?, granted_at = GETDATE()
+                    WHEN NOT MATCHED THEN
+                        INSERT (user_id, permission_name, granted, granted_by, granted_at)
+                        VALUES (?, ?, ?, ?, GETDATE());
+                """, (
+                    user_id, perm.permission_name,
+                    1 if perm.granted else 0, admin_username,
+                    user_id, perm.permission_name, 1 if perm.granted else 0, admin_username
+                ))
+                results.append({
+                    'permission': perm.permission_name,
+                    'success': True,
+                    'granted': perm.granted
+                })
+            except Exception as perm_err:
+                results.append({'permission': perm.permission_name, 'success': False, 'error': str(perm_err)})
+        
+        conn.commit()
+        cursor.close()
+        conn.close()
+        
+        return {'user_id': user_id, 'username': username, 'results': results}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        msg = str(e)
+        logger.error(f"Error bulk setting permissions for user {user_id}: {msg}")
+        raise HTTPException(status_code=500, detail=f"Failed to set permissions: {msg}")
+
+
+@router.get('/permissions/all-users')
+async def get_all_users_permissions(_admin=Depends(get_current_admin)):
+    """Get permissions for all users (admin only)."""
+    try:
+        conn = db.get_sqlserver_connection()
+        if not conn:
+            raise HTTPException(status_code=503, detail="SQL Server not available")
+        
+        _ensure_permissions_table(conn)
+        cursor = conn.cursor()
+        
+        # Get all users
+        cursor.execute("SELECT id, username, role FROM users ORDER BY id")
+        users = cursor.fetchall()
+        
+        result = []
+        for user in users:
+            user_id, username, role = user[0], user[1], user[2]
+            
+            # Get permissions for this user
+            cursor.execute(
+                "SELECT permission_name, granted FROM user_permissions WHERE user_id = ?",
+                (user_id,)
+            )
+            perm_rows = cursor.fetchall()
+            
+            perms = {row[0]: bool(row[1]) for row in perm_rows}
+            
+            # For admins, all permissions are true
+            if role == 'admin':
+                for perm in AVAILABLE_PERMISSIONS:
+                    perms[perm] = True
+            
+            result.append({
+                'user_id': user_id,
+                'username': username,
+                'role': role,
+                'is_admin': role == 'admin',
+                'permissions': perms
+            })
+        
+        cursor.close()
+        conn.close()
+        
+        return {'users': result, 'available_permissions': AVAILABLE_PERMISSIONS}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        msg = str(e)
+        logger.error(f"Error getting all users permissions: {msg}")
+        raise HTTPException(status_code=500, detail=f"Failed to get permissions: {msg}")
+
+
+@router.get('/me/permissions')
+async def get_my_permissions(current_user: dict = Depends(get_current_user)):
+    """Get the current user's permissions."""
+    try:
+        username = current_user.get('sub') if isinstance(current_user, dict) else None
+        role = current_user.get('role') if isinstance(current_user, dict) else 'user'
+        
+        if not username:
+            raise HTTPException(status_code=400, detail="Invalid user")
+        
+        conn = db.get_sqlserver_connection()
+        if not conn:
+            # Return default permissions if no DB
+            return {
+                'username': username,
+                'role': role,
+                'is_admin': role == 'admin',
+                'permissions': {perm: (role == 'admin') for perm in AVAILABLE_PERMISSIONS}
+            }
+        
+        _ensure_permissions_table(conn)
+        cursor = conn.cursor()
+        
+        # Get user ID
+        cursor.execute("SELECT id, role FROM users WHERE username = ?", (username,))
+        user_row = cursor.fetchone()
+        
+        if not user_row:
+            cursor.close()
+            conn.close()
+            # User not in DB, return based on role from token
+            return {
+                'username': username,
+                'role': role,
+                'is_admin': role == 'admin',
+                'permissions': {perm: (role == 'admin') for perm in AVAILABLE_PERMISSIONS}
+            }
+        
+        user_id, db_role = user_row[0], user_row[1]
+        
+        # Get permissions
+        cursor.execute(
+            "SELECT permission_name, granted FROM user_permissions WHERE user_id = ?",
+            (user_id,)
+        )
+        perm_rows = cursor.fetchall()
+        cursor.close()
+        conn.close()
+        
+        perms = {row[0]: bool(row[1]) for row in perm_rows}
+        
+        # For admins, all permissions are true
+        if db_role == 'admin':
+            for perm in AVAILABLE_PERMISSIONS:
+                perms[perm] = True
+        else:
+            # Fill in missing permissions as False
+            for perm in AVAILABLE_PERMISSIONS:
+                if perm not in perms:
+                    perms[perm] = False
+        
+        return {
+            'username': username,
+            'role': db_role,
+            'is_admin': db_role == 'admin',
+            'permissions': perms
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        msg = str(e)
+        logger.error(f"Error getting my permissions: {msg}")
+        raise HTTPException(status_code=500, detail=f"Failed to get permissions: {msg}")
+
+
 @router.post('/me/change-password')
 async def me_change_password(new_password: str = Form(...), current_user: dict = Depends(get_current_user)):
     """Allow logged-in user to change their own password and clear must_change_password flag."""
@@ -2657,7 +3522,7 @@ async def me_change_password(new_password: str = Form(...), current_user: dict =
             raise HTTPException(status_code=503, detail="SQL Server not available")
         _ensure_users_table(conn)
         cur = conn.cursor()
-        hashed = pwd_context.hash(new_password)
+        hashed = _hash_password(new_password)
         username = current_user.get('sub') if isinstance(current_user, dict) else None
         if not username:
             raise HTTPException(status_code=400, detail="Invalid current user")
@@ -2719,6 +3584,96 @@ async def list_tables(_user=Depends(get_current_user)):
         if 'ODBC Driver' in msg or 'SQLDriverConnect' in msg or 'IM002' in msg:
             raise HTTPException(status_code=503, detail="SQL Server not available; please verify driver/server/database settings.")
         raise HTTPException(status_code=500, detail=f"Failed to fetch tables: {msg}")
+
+
+class CreateTableRequest(BaseModel):
+    table_name: str
+    columns: List[dict]  # Each dict has 'name' and 'type'
+
+
+@router.post('/create-table')
+async def create_table(request: CreateTableRequest, current_user: dict = Depends(get_current_user)):
+    """Create a new table in SQL Server with specified columns"""
+    # Check permission
+    username = current_user.get('sub') if isinstance(current_user, dict) else None
+    if not check_user_permission(username, 'create_table'):
+        raise HTTPException(status_code=403, detail="Permission denied: 'create_table' access required")
+    
+    try:
+        table_name = request.table_name.strip()
+        columns = request.columns
+        
+        if not table_name:
+            raise HTTPException(status_code=400, detail="Table name is required")
+        
+        if not columns or len(columns) == 0:
+            raise HTTPException(status_code=400, detail="At least one column is required")
+        
+        # Sanitize table name
+        import re
+        safe_table_name = re.sub(r'[^a-zA-Z0-9_]', '_', table_name)
+        if not safe_table_name[0].isalpha():
+            safe_table_name = 'tbl_' + safe_table_name
+        
+        logger.info(f"Creating table: {safe_table_name} with {len(columns)} columns")
+        
+        conn = db.get_sqlserver_connection()
+        if not conn:
+            raise HTTPException(status_code=503, detail="SQL Server not available")
+        
+        cursor = conn.cursor()
+        
+        # Check if table already exists using OBJECT_ID which is more reliable
+        cursor.execute(f"SELECT OBJECT_ID('{safe_table_name}', 'U')")
+        result = cursor.fetchone()
+        table_exists = result is not None and result[0] is not None
+        
+        logger.info(f"Checking if table '{safe_table_name}' exists: {table_exists}")
+        
+        if table_exists:
+            cursor.close()
+            conn.close()
+            logger.info(f"Table {safe_table_name} already exists")
+            return {"success": True, "table_name": safe_table_name, "columns": len(columns), "already_exists": True, "message": f"Table '{safe_table_name}' already exists"}
+        
+        # Build CREATE TABLE statement
+        column_defs = []
+        for col in columns:
+            col_name = re.sub(r'[^a-zA-Z0-9_]', '_', str(col.get('name', 'column')))
+            # Ensure column name starts with a letter (must match import-data logic)
+            if col_name and not col_name[0].isalpha():
+                col_name = 'col_' + col_name
+            col_type = col.get('type', 'VARCHAR(255)')
+            # Validate column type to prevent SQL injection
+            valid_types = ['VARCHAR(255)', 'VARCHAR(MAX)', 'INT', 'BIGINT', 'FLOAT', 'DECIMAL(18,4)', 'DATETIME', 'DATE', 'BIT', 'NVARCHAR(255)', 'NVARCHAR(MAX)', 'TEXT']
+            if col_type.upper() not in [t.upper() for t in valid_types]:
+                col_type = 'VARCHAR(255)'  # Default to safe type
+            column_defs.append(f"[{col_name}] {col_type}")
+        
+        # Create table with identity column for row ID
+        create_sql = f"""
+            CREATE TABLE [dbo].[{safe_table_name}] (
+                [_id] INT IDENTITY(1,1) PRIMARY KEY,
+                {', '.join(column_defs)}
+            )
+        """
+        
+        cursor.execute(create_sql)
+        conn.commit()
+        
+        cursor.close()
+        conn.close()
+        
+        logger.info(f"Table {safe_table_name} created successfully")
+        return {"success": True, "table_name": safe_table_name, "columns": len(columns), "already_exists": False, "message": f"Table '{safe_table_name}' created successfully"}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        msg = str(e)
+        logger.error(f"Error creating table: {msg}")
+        logger.error(f"Traceback: {traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=f"Failed to create table: {msg}")
 
 
 # Power BI Integration Endpoints
@@ -3287,6 +4242,7 @@ async def powerbi_health(url: Optional[str] = None, _user=Depends(get_current_us
             parts.append(f'PWD={pwd}')
     if s.get('encrypt', False):
         parts.append('Encrypt=yes')
+    parts.append('TrustServerCertificate=yes')
     conn_str = ';'.join(parts)
     try:
         return pyodbc.connect(conn_str, timeout=5)

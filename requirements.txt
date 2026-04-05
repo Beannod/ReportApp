@@ -11,3 +11,4 @@ Pillow>=9.0
 pandas>=2.0
 openpyxl>=3.0
 requests>=2.31
+pyodbc>=4.0

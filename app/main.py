@@ -1,6 +1,7 @@
-from fastapi import FastAPI, Response, Request
+from fastapi import FastAPI, Response, Request, Depends, HTTPException
 from fastapi.staticfiles import StaticFiles
 from . import api, db
+from . import db_connection as dbc
 import os
 from fastapi.responses import FileResponse
 
@@ -67,6 +68,9 @@ async def login_page():
 @app.get('/powerbi', include_in_schema=False)
 async def powerbi_page():
     # Serve dedicated Power BI dashboard page
+    # NOTE: Like /report and /import, the page itself is public so browsers can load the UI.
+    # API endpoints used by the page remain protected by authentication.
+    # The frontend reads the token from sessionStorage and includes it in API calls.
     pb_path = os.path.join(os.path.dirname(__file__), '..', 'frontend', 'powerbi.html')
     pb_path = os.path.normpath(pb_path)
     if os.path.exists(pb_path):
@@ -86,9 +90,24 @@ async def favicon():
 
 @app.get('/report', include_in_schema=False)
 async def report_page():
-    # Serve the report generation page if present
+    # Serve the report generation page if present. Auth is enforced by API endpoints;
+    # the frontend reads the token from sessionStorage and will call protected APIs.
     report_path = os.path.join(os.path.dirname(__file__), '..', 'frontend', 'report.html')
     report_path = os.path.normpath(report_path)
+    # If no report DB/server is configured, show a clear message so users know
+    # the reports feature is not yet connected. Do not remove existing logic;
+    # this simply returns a friendly page when no DB settings are present.
+    try:
+        s = dbc.load_settings()
+        server = s.get('host')
+        report_db = s.get('report_database') or s.get('reports_database') or s.get('database')
+        if not server or not report_db:
+            # Return a minimal HTML response indicating no DB is configured for reports
+            return Response(content="<html><body><h2>No report database configured</h2><p>The reports feature is not connected to a database. Configure the database under Admin Settings to enable reports.</p></body></html>", media_type='text/html')
+    except Exception:
+        # If settings cannot be read, show the same informative message
+        return Response(content="<html><body><h2>No report database configured</h2><p>The reports feature is not connected to a database. Configure the database under Admin Settings to enable reports.</p></body></html>", media_type='text/html')
+
     if os.path.exists(report_path):
         return FileResponse(report_path, media_type='text/html')
     return Response(status_code=404)
@@ -96,11 +115,37 @@ async def report_page():
 
 @app.get('/report.html', include_in_schema=False)
 async def report_page_html():
-    # Direct mapping for clients requesting /report.html
+    # Direct mapping for clients requesting /report.html. Serve the static page; the
+    # frontend will perform authenticated API calls using the stored token.
     report_path = os.path.join(os.path.dirname(__file__), '..', 'frontend', 'report.html')
     report_path = os.path.normpath(report_path)
     if os.path.exists(report_path):
         return FileResponse(report_path, media_type='text/html')
+    return Response(status_code=404)
+
+
+@app.get('/import', include_in_schema=False)
+async def import_page():
+    # Serve the enhanced import data page.
+    # NOTE: the page itself is deliberately public so browsers can load the UI; API
+    # endpoints used by the page remain protected by admin checks. The frontend
+    # must include the Authorization header for API calls.
+    import_path = os.path.join(os.path.dirname(__file__), '..', 'frontend', 'import.html')
+    import_path = os.path.normpath(import_path)
+    if os.path.exists(import_path):
+        return FileResponse(import_path, media_type='text/html')
+    return Response(status_code=404)
+
+
+@app.get('/import.html', include_in_schema=False)
+async def import_page_html():
+    # Direct mapping for clients requesting /import.html. The HTML page is
+    # served without authentication; API endpoints used by the page remain
+    # protected by `api.get_current_admin` where appropriate.
+    import_path = os.path.join(os.path.dirname(__file__), '..', 'frontend', 'import.html')
+    import_path = os.path.normpath(import_path)
+    if os.path.exists(import_path):
+        return FileResponse(import_path, media_type='text/html')
     return Response(status_code=404)
 
 

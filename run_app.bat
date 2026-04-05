@@ -1,11 +1,7 @@
 @echo off
-REM Convenience wrapper to start the app on Windows
-SETLOCAL
-powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0run_dev.ps1" %*
-ENDLOCAL
-@echo off
 REM run_app.bat — check for active server, stop if running, then create venv if missing, install requirements, and start the app
 SETLOCAL ENABLEDELAYEDEXPANSION
+cd /d "%~dp0"
 
 echo Checking for active server on port 8001 (only LISTENING)...
 REM Only treat sockets in LISTENING state as an active server. This avoids false-positives
@@ -33,15 +29,15 @@ if /I "%1"=="noinstall" (
 if NOT DEFINED SKIP_INSTALL (
   if not exist ".venv\Scripts\python.exe" (
     echo Creating virtual environment...
-    py -3 -m venv .venv
+    python -m venv .venv
   )
 
-  echo Activating virtual environment and installing requirements (if needed)...
+  echo Activating virtual environment and installing requirements (if needed^)...
   call .venv\Scripts\Activate.bat
   pip install --upgrade pip
   pip install -r requirements.txt
 ) else (
-  echo Skipping virtual environment activation and package installation (-- noinstall) ...
+  echo Skipping virtual environment activation and package installation (-- noinstall^) ...
   if exist ".venv\Scripts\Activate.bat" (
     call .venv\Scripts\Activate.bat
   )
@@ -60,7 +56,7 @@ if /I "%1"=="reload" (
   )
 )
 
-py -m uvicorn app.main:app %RELOAD_FLAG%
+python -m uvicorn app.main:app --host 0.0.0.0 --port 8001 %RELOAD_FLAG%
 
 REM Wait a moment for the server to start
 timeout /t 3 /nobreak >nul

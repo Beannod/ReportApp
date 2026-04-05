@@ -1,0 +1,2242 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Import Data - ReportApp</title>
+  <link rel="stylesheet" href="/static/styles.css?v=11" />
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Sora:wght@600;700;800&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg-page: #f3f7fb;
+      --bg-card: #ffffff;
+      --bg-card-alt: #eef4fb;
+      --text-primary: #1e293b;
+      --text-secondary: #64748b;
+      --text-muted: #94a3b8;
+      --border-color: #d9e6f3;
+      --accent: #0f766e;
+      --accent-hover: #115e59;
+      --success: #059669;
+      --warning: #f59e0b;
+      --danger: #ef4444;
+      --shadow-sm: 0 6px 14px rgba(2,6,23,0.06);
+      --shadow-md: 0 12px 26px rgba(2,6,23,0.12);
+      --shadow-lg: 0 20px 40px rgba(2,6,23,0.14);
+    }
+
+    html.dark {
+      --bg-page: #0f172a;
+      --bg-card: #1e293b;
+      --bg-card-alt: #334155;
+      --text-primary: #f1f5f9;
+      --text-secondary: #94a3b8;
+      --text-muted: #64748b;
+      --border-color: #334155;
+      --accent: #60a5fa;
+      --accent-hover: #3b82f6;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: 'Manrope', 'Segoe UI', system-ui, -apple-system, sans-serif;
+      background: var(--bg-page);
+      color: var(--text-primary);
+      min-height: 100vh;
+      position: relative;
+    }
+
+    body::before,
+    body::after {
+      content: '';
+      position: fixed;
+      z-index: -1;
+      border-radius: 999px;
+      filter: blur(70px);
+      opacity: 0.34;
+      pointer-events: none;
+    }
+
+    body::before {
+      width: 460px;
+      height: 460px;
+      right: -140px;
+      top: -130px;
+      background: radial-gradient(circle, rgba(15,118,110,0.85), rgba(15,118,110,0));
+    }
+
+    body::after {
+      width: 520px;
+      height: 520px;
+      left: -170px;
+      bottom: -180px;
+      background: radial-gradient(circle, rgba(194,65,12,0.62), rgba(194,65,12,0));
+    }
+
+    /* Header */
+    .header {
+      background: linear-gradient(120deg, rgba(255,255,255,0.94), rgba(236,253,245,0.86));
+      border: 1px solid rgba(15,118,110,0.2);
+      border-radius: 16px;
+      margin: 16px 24px 0;
+      padding: 14px 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      box-shadow: 0 14px 34px rgba(15,118,110,0.12);
+      position: sticky;
+      top: 12px;
+      z-index: 20;
+    }
+
+    .header-left {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .header h1 {
+      font-size: 1.4rem;
+      font-family: 'Sora', 'Manrope', sans-serif;
+      font-weight: 700;
+      letter-spacing: -0.2px;
+      color: var(--text-primary);
+    }
+
+    .back-btn {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 16px;
+      background: var(--bg-card-alt);
+      border: 1px solid var(--border-color);
+      border-radius: 10px;
+      color: var(--text-secondary);
+      text-decoration: none;
+      font-size: 14px;
+      transition: all 0.2s;
+    }
+
+    .back-btn:hover {
+      background: var(--accent);
+      color: white;
+      border-color: var(--accent);
+    }
+
+    .theme-toggle {
+      padding: 8px 12px;
+      background: var(--bg-card-alt);
+      border: 1px solid var(--border-color);
+      border-radius: 10px;
+      cursor: pointer;
+      font-size: 18px;
+      transition: all 0.2s;
+    }
+
+    .theme-toggle:hover {
+      background: var(--accent);
+      color: white;
+    }
+
+    /* Main Container */
+    .main-container {
+      max-width: 1420px;
+      margin: 0 auto;
+      padding: 20px 24px 28px;
+    }
+
+    .import-hero {
+      margin: 12px 0 18px;
+      border-radius: 18px;
+      padding: 18px 22px;
+      background: linear-gradient(130deg, #0f766e, #0f766e 45%, #c2410c 100%);
+      color: #ffffff;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 14px;
+      box-shadow: 0 16px 38px rgba(15,118,110,0.26);
+    }
+
+    .import-hero h2 {
+      margin: 0;
+      font-family: 'Sora', 'Manrope', sans-serif;
+      font-size: 1.25rem;
+      letter-spacing: -0.2px;
+      color: #ffffff;
+      border: none;
+      padding: 0;
+    }
+
+    .import-hero p {
+      margin: 6px 0 0;
+      font-size: 13px;
+      opacity: 0.9;
+    }
+
+    .hero-pills {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 8px;
+      min-width: 360px;
+    }
+
+    .hero-pill {
+      padding: 10px;
+      border-radius: 10px;
+      background: rgba(255,255,255,0.18);
+      border: 1px solid rgba(255,255,255,0.28);
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      text-align: center;
+    }
+
+    /* Grid Layout */
+    .import-grid {
+      display: grid;
+      grid-template-columns: 1fr 1.45fr;
+      gap: 24px;
+    }
+
+    @media (max-width: 1024px) {
+      .import-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    /* Cards */
+    .card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: 14px;
+      padding: 14px;
+      box-shadow: var(--shadow-sm);
+    }
+
+    .card-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 12px;
+      padding-bottom: 10px;
+      border-bottom: 1px solid var(--border-color);
+    }
+
+    .card-header h2 {
+      font-size: 1rem;
+      font-weight: 700;
+      color: var(--text-primary);
+    }
+
+    .card-header .icon {
+      font-size: 1.5rem;
+    }
+
+    /* Form Elements */
+    .form-group {
+      margin-bottom: 20px;
+    }
+
+    .form-group label {
+      display: block;
+      font-weight: 500;
+      color: var(--text-primary);
+      margin-bottom: 8px;
+      font-size: 14px;
+    }
+
+    .form-group .hint {
+      font-size: 12px;
+      color: var(--text-muted);
+      margin-top: 4px;
+    }
+
+    select, input[type="text"] {
+      width: 100%;
+      padding: 12px 16px;
+      border: 2px solid var(--border-color);
+      border-radius: 8px;
+      font-size: 15px;
+      background: var(--bg-card);
+      color: var(--text-primary);
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+
+    select:focus, input[type="text"]:focus {
+      outline: none;
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+    }
+
+    /* File Drop Zone (compact) */
+    .drop-zone {
+      border: 2px dashed var(--border-color);
+      border-radius: 12px;
+      padding: 10px 12px;
+      text-align: center;
+      cursor: pointer;
+      transition: all 0.15s;
+      background: var(--bg-card-alt);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      justify-content: space-between;
+    }
+
+    .drop-zone:hover, .drop-zone.dragover {
+      border-color: var(--accent);
+      background: rgba(59, 130, 246, 0.05);
+    }
+
+    .drop-zone .icon {
+      font-size: 16px;
+      margin: 0 6px 0 0;
+    }
+
+    .drop-zone .drop-text {
+      flex: 1 1 auto;
+      text-align: left;
+    }
+
+    .drop-zone h3 {
+      font-size: 0.88rem;
+      color: var(--text-primary);
+      margin: 0 0 2px 0;
+    }
+
+    .drop-zone p {
+      color: var(--text-secondary);
+      font-size: 13px;
+      margin: 0;
+    }
+
+    .drop-zone input[type="file"] {
+      display: none;
+    }
+
+    /* Expand/collapse controls */
+    .expand-btn {
+      width: 20px;
+      height: 20px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 4px;
+      border: 1px solid var(--border-color);
+      background: var(--bg-card-alt);
+      color: var(--text-primary);
+      cursor: pointer;
+      font-weight: 700;
+      margin-right: 8px;
+      font-size: 13px;
+      padding: 0;
+      line-height: 1;
+      box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+    }
+
+    /* Section toggle (slightly larger than log expand) */
+    .section-toggle {
+      width: 26px;
+      height: 26px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 6px;
+      border: 1px solid var(--border-color);
+      background: var(--bg-card-alt);
+      color: var(--text-primary);
+      cursor: pointer;
+      font-weight: 700;
+      margin-left: 8px;
+      font-size: 14px;
+      padding: 0;
+      line-height: 1;
+    }
+
+    .log-details {
+      display: none;
+      padding: 8px 10px;
+      background: var(--bg-card-alt);
+      border-radius: 6px;
+      margin-top: 6px;
+      color: var(--text-primary);
+      font-size: 13px;
+    }
+
+    /* File List */
+    .file-list {
+      margin-top: 16px;
+    }
+
+    .file-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 10px;
+      background: var(--bg-card-alt);
+      border-radius: 6px;
+      margin-bottom: 4px;
+    }
+
+    .file-item .file-icon {
+      font-size: 14px;
+    }
+
+    .file-item .file-info {
+      flex: 1;
+    }
+
+    .file-item .file-name {
+      font-weight: 500;
+      color: var(--text-primary);
+    }
+
+    .file-item .file-size {
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+
+    .file-item .remove-btn {
+      padding: 6px 10px;
+      background: transparent;
+      border: none;
+      color: var(--danger);
+      cursor: pointer;
+      font-size: 18px;
+      border-radius: 6px;
+      transition: background 0.2s;
+    }
+
+    .file-item .remove-btn:hover {
+      background: rgba(239, 68, 68, 0.1);
+    }
+
+    /* Buttons */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      padding: 6px 10px;
+      border: none;
+      border-radius: 10px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.12s;
+    }
+
+    .btn-primary {
+      background: var(--accent);
+      color: white;
+    }
+
+    .btn-primary:hover {
+      background: var(--accent-hover);
+      transform: translateY(-1px);
+      box-shadow: var(--shadow-md);
+    }
+
+    .btn-primary:disabled {
+      background: var(--text-muted);
+      cursor: not-allowed;
+      transform: none;
+    }
+
+    .btn-secondary {
+      background: var(--bg-card-alt);
+      color: var(--text-primary);
+      border: 1px solid var(--border-color);
+    }
+
+    .btn-secondary:hover {
+      background: var(--border-color);
+    }
+
+    .btn-success {
+      background: var(--success);
+      color: white;
+    }
+
+    .btn-danger {
+      background: var(--danger);
+      color: white;
+    }
+
+    .btn-warning {
+      background: var(--warning);
+      color: white;
+    }
+
+    .btn-group {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .left-column,
+    .right-column {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .left-column .card,
+    .right-column .card {
+      margin-top: 0 !important;
+      margin-bottom: 0 !important;
+    }
+
+    @media (min-width: 1025px) {
+      .right-column {
+        position: sticky;
+        top: 104px;
+        align-self: start;
+      }
+    }
+
+    /* Import Log Section */
+    .import-log {
+      margin-top: 24px;
+    }
+
+    .log-entry {
+      padding: 16px;
+      border-radius: 8px;
+      margin-bottom: 12px;
+      border-left: 4px solid;
+    }
+
+    .log-entry.info {
+      background: rgba(59, 130, 246, 0.1);
+      border-left-color: var(--accent);
+    }
+
+    .log-entry.success {
+      background: rgba(34, 197, 94, 0.1);
+      border-left-color: var(--success);
+    }
+
+    .log-entry.warning {
+      background: rgba(245, 158, 11, 0.1);
+      border-left-color: var(--warning);
+    }
+
+    .log-entry.error {
+      background: rgba(239, 68, 68, 0.1);
+      border-left-color: var(--danger);
+    }
+
+    .log-entry .log-time {
+      font-size: 12px;
+      color: var(--text-muted);
+      margin-bottom: 4px;
+    }
+
+    .log-entry .log-message {
+      color: var(--text-primary);
+    }
+
+    /* Progress Bar */
+    .progress-container {
+      margin: 20px 0;
+      display: none;
+    }
+
+    .progress-container.active {
+      display: block;
+    }
+
+    .progress-bar {
+      height: 8px;
+      background: var(--bg-card-alt);
+      border-radius: 4px;
+      overflow: hidden;
+    }
+
+    .progress-fill {
+      height: 100%;
+      background: linear-gradient(90deg, var(--accent), var(--success));
+      width: 0%;
+      transition: width 0.3s;
+    }
+
+    .progress-text {
+      text-align: center;
+      margin-top: 8px;
+      font-size: 14px;
+      color: var(--text-secondary);
+    }
+
+    /* Duplicate Action Modal */
+    .duplicate-modal {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0, 0, 0, 0.5);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 1000;
+      opacity: 0;
+      visibility: hidden;
+      transition: all 0.3s;
+    }
+
+    .duplicate-modal.active {
+      opacity: 1;
+      visibility: visible;
+    }
+
+    /* Full-page Preview Modal */
+    .preview-modal {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.6);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 1100;
+      opacity: 0;
+      visibility: hidden;
+      transition: all 0.2s;
+      padding: 24px;
+    }
+
+    .preview-modal.active {
+      opacity: 1;
+      visibility: visible;
+    }
+
+    .preview-content {
+      background: var(--bg-card);
+      width: 100%;
+      max-width: 1200px;
+      max-height: 92vh;
+      border-radius: 12px;
+      overflow: auto;
+      box-shadow: var(--shadow-lg);
+      padding: 18px;
+      position: relative;
+    }
+
+    /* Create table preview layout */
+    .create-table-controls {
+      margin-bottom: 8px;
+    }
+
+    .create-table-row {
+      display: grid;
+      grid-template-columns: auto 120px;
+      gap: 6px;
+      align-items: center;
+      padding: 4px 6px;
+      background: var(--bg-card-alt);
+      border-radius: 6px;
+      font-size: 12px;
+      line-height: 1.1;
+    }
+
+    /* container: stack each .create-table-row as a single full-width row */
+    .create-table-grid {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 6px;
+    }
+
+    .create-table-name {
+      padding: 4px 6px;
+      border-radius: 6px;
+      border: 1px solid var(--border-color);
+      font-size: 12px;
+      height: 32px;
+      box-sizing: border-box;
+    }
+
+    .col-type-select {
+      padding: 4px 6px;
+      border-radius: 6px;
+      border: 1px solid var(--border-color);
+      font-size: 12px;
+      width: 100%;
+      height: 32px;
+      box-sizing: border-box;
+    }
+
+    @media (max-width: 720px) {
+      .create-table-grid { grid-template-columns: 1fr; }
+    }
+
+    /* Column name and type sizing */
+    .create-table-row .col-name {
+      /* size to content, allow shrink, but prevent overflowing the row */
+      flex: 0 0 auto;
+      padding: 0 8px;
+      font-size: 12px;
+      color: var(--text-primary);
+      height: 32px;
+      display: inline-flex;
+      align-items: center;
+      border: 1px solid var(--border-color);
+      border-radius: 6px;
+      background: var(--bg-card);
+      box-sizing: border-box;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      /* size to content; small minimum to avoid collapse */
+      min-width: 28px;
+    }
+
+    .create-table-row .col-type-select {
+      flex: 0 0 120px;
+      max-width: 120px;
+    }
+
+    @media (max-width: 720px) {
+      .create-table-row { flex-direction: row; }
+      .create-table-row .col-type-select { flex: 0 0 120px; }
+    }
+
+    /* Collapsible columns container */
+    .create-columns { margin-top: 6px; }
+    .create-columns.hidden { display: none; }
+
+    .create-controls-row { display:flex; gap:6px; align-items:center; }
+    .create-toggle { width:24px; height:24px; display:inline-flex; align-items:center; justify-content:center; border-radius:6px; border:1px solid var(--border-color); background:var(--bg-card-alt); cursor:pointer; font-weight:700; font-size:13px; }
+
+    .preview-close {
+      position: absolute;
+      top: 12px;
+      right: 12px;
+      background: transparent;
+      border: none;
+      font-size: 22px;
+      cursor: pointer;
+      padding: 8px;
+      border-radius: 8px;
+      color: var(--text-secondary);
+    }
+
+    .preview-close:hover {
+      background: var(--bg-card-alt);
+      color: var(--text-primary);
+    }
+
+    .duplicate-content {
+      background: var(--bg-card);
+      border-radius: 12px;
+      padding: 16px;
+      max-width: 420px;
+      width: 90%;
+      box-shadow: var(--shadow-lg);
+    }
+
+    .duplicate-content h3 {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-size: 1.25rem;
+      color: var(--warning);
+      margin-bottom: 16px;
+    }
+
+    .duplicate-info {
+      background: var(--bg-card-alt);
+      border-radius: 8px;
+      padding: 16px;
+      margin-bottom: 20px;
+    }
+
+    .duplicate-info p {
+      margin-bottom: 8px;
+      color: var(--text-secondary);
+    }
+
+    .duplicate-info strong {
+      color: var(--text-primary);
+    }
+
+    /* Import History Table */
+    .history-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 16px;
+    }
+
+    .history-table th,
+    .history-table td {
+      padding: 12px;
+      text-align: left;
+      border-bottom: 1px solid var(--border-color);
+    }
+
+    .history-table th {
+      background: var(--bg-card-alt);
+      font-weight: 600;
+      font-size: 13px;
+      color: var(--text-secondary);
+      text-transform: uppercase;
+    }
+
+    .history-table td {
+      font-size: 14px;
+      color: var(--text-primary);
+    }
+
+    .status-badge {
+      display: inline-block;
+      padding: 4px 10px;
+      border-radius: 12px;
+      font-size: 12px;
+      font-weight: 600;
+    }
+
+    .status-badge.success {
+      background: rgba(34, 197, 94, 0.1);
+      color: var(--success);
+    }
+
+    .status-badge.failed {
+      background: rgba(239, 68, 68, 0.1);
+      color: var(--danger);
+    }
+
+    .status-badge.pending {
+      background: rgba(245, 158, 11, 0.1);
+      color: var(--warning);
+    }
+
+    /* Stats Grid */
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+
+    .stat-card {
+      background: var(--bg-card-alt);
+      border-radius: 8px;
+      padding: 6px 8px;
+      text-align: center;
+    }
+
+    .stat-card .stat-value {
+      font-size: 0.95rem;
+      font-weight: 700;
+      color: var(--accent);
+    }
+
+    .stat-card .stat-label {
+      font-size: 13px;
+      color: var(--text-muted);
+      margin-top: 4px;
+    }
+
+    /* Preview Table */
+    .preview-container {
+      overflow-x: auto;
+      max-height: 400px;
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+    }
+
+    .preview-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+
+    .preview-table th,
+    .preview-table td {
+      padding: 10px 12px;
+      border: 1px solid var(--border-color);
+      white-space: nowrap;
+    }
+
+    .preview-table th {
+      background: var(--bg-card-alt);
+      font-weight: 600;
+      position: sticky;
+      top: 0;
+    }
+
+    .preview-table tr:hover {
+      background: var(--bg-card-alt);
+    }
+
+    /* Responsive */
+    @media (max-width: 768px) {
+      .header {
+        margin: 10px 10px 0;
+        position: static;
+      }
+
+      .main-container {
+        padding: 12px 10px 18px;
+      }
+
+      .import-hero {
+        flex-direction: column;
+        align-items: flex-start;
+      }
+
+      .hero-pills {
+        min-width: 100%;
+      }
+
+      .stats-grid {
+        grid-template-columns: 1fr;
+      }
+      
+      .btn-group {
+        flex-direction: column;
+      }
+      
+      .btn {
+        width: 100%;
+      }
+    }
+
+    html.dark .header {
+      background: linear-gradient(120deg, rgba(7,25,32,0.94), rgba(8,47,73,0.76));
+      border-color: rgba(45,212,191,0.32);
+      box-shadow: 0 16px 34px rgba(0,0,0,0.45);
+    }
+
+    html.dark .card {
+      border-color: rgba(45,212,191,0.2);
+      background: linear-gradient(180deg, rgba(12,22,37,0.92), rgba(9,18,32,0.92));
+    }
+
+    html.dark .hero-pill {
+      background: rgba(2,6,23,0.25);
+      border-color: rgba(255,255,255,0.2);
+    }
+  </style>
+</head>
+<body>
+  <!-- Header -->
+  <header class="header">
+    <div class="header-left">
+      <a href="/" class="back-btn">← Back to Dashboard</a>
+      <h1>📤 Import Data</h1>
+    </div>
+    <button class="theme-toggle" id="themeToggle" title="Toggle Dark Mode">🌙</button>
+  </header>
+
+  <!-- Main Container -->
+  <div class="main-container">
+    <section class="import-hero">
+      <div>
+        <h2>Import Workspace</h2>
+        <p>Preview and validate files before loading them into SQL Server tables.</p>
+      </div>
+      <div class="hero-pills">
+        <div class="hero-pill">CSV/XLSX</div>
+        <div class="hero-pill">Safe Preview</div>
+        <div class="hero-pill">Quick Import</div>
+      </div>
+    </section>
+    <div class="import-grid">
+      <!-- Left Column: Import Form -->
+      <div class="left-column">
+        <div class="card" style="margin-top: 24px;">
+          <div class="card-header">
+            <span class="icon">📁</span>
+            <h2>Select Files</h2>
+          </div>
+
+          <div class="drop-zone" id="dropZone">
+            <div class="icon">📂</div>
+            <div class="drop-text">
+              <h3>Drag & Drop Files Here</h3>
+              <p>or click to browse</p>
+              <p style="margin-top: 6px; font-size: 12px; color: var(--text-muted);">Supported: CSV, Excel (.xlsx, .xls)</p>
+            </div>
+            <input type="file" id="fileInput" accept=".csv,.xlsx,.xls" multiple />
+            <div style="margin-left:12px;">
+              <button id="browseFilesBtn" type="button" class="btn btn-secondary" style="padding:8px 12px; font-size:14px;">📁 Browse</button>
+            </div>
+          </div>
+
+          <div class="file-list" id="fileList"></div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <span class="icon">⚙️</span>
+            <h2>Import Settings</h2>
+          </div>
+
+          <!-- Create New Table Toggle -->
+          <div class="form-group">
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <input type="checkbox" id="createNewTableCheck" />
+              <label for="createNewTableCheck" style="margin: 0; font-weight: 600; color: var(--primary, #3b82f6);">✨ Create New Table</label>
+            </div>
+            <p class="hint">Check this to create a new table instead of importing to existing</p>
+          </div>
+
+          <div class="form-group" id="tableSelectGroup">
+            <label for="tableSelect">Target Table</label>
+            <select id="tableSelect">
+              <option value="">-- Select a table --</option>
+            </select>
+            <p class="hint">Select an existing table to import data into</p>
+          </div>
+
+          <div class="form-group">
+            <label for="sheetSelect">Sheet Name (for Excel files)</label>
+            <select id="sheetSelect">
+              <option value="">-- Select a file first --</option>
+            </select>
+            <div id="sheetStatus" class="hint" style="margin-top:6px;">No file selected.</div>
+          </div>
+          <div class="form-group" style="display:flex; align-items:center; gap:8px;">
+            <input type="checkbox" id="useFirstColHeader" />
+            <label for="useFirstColHeader" style="margin:0; font-weight:500;">Use first column as headers (transpose)</label>
+          </div>
+        </div>
+
+        <button id="refreshTablesBtn" class="btn btn-secondary" style="width: 100%; margin-top: 16px;">
+          🔄 Refresh Tables
+        </button>
+        
+            <!-- preview/import controls were moved to the right column -->
+      </div>
+
+      <!-- Right Column: Log & History -->
+      <div class="right-column">
+        <div class="card" style="margin-bottom:12px;">
+          <div class="card-header">
+            <span class="icon">⚡</span>
+            <h2>Actions</h2>
+          </div>
+          <div style="padding:8px;">
+            <div class="btn-group" style="flex-direction: column; width:100%;">
+              <button id="previewBtn" class="btn btn-secondary" disabled style="width:100%;">
+                👁️ Preview Data
+              </button>
+              
+              <!-- Inline Create Table Section (shown when checkbox is checked and preview is done) -->
+              <div id="inlineCreateTableSection" style="display: none; margin-top: 12px; padding: 12px; background: var(--bg-tertiary, #f0f9ff); border: 2px solid var(--primary, #3b82f6); border-radius: 8px;">
+                <h3 style="margin: 0 0 12px 0; color: var(--primary, #3b82f6); font-size: 14px; display: flex; align-items: center; gap: 6px;">
+                  <span>📋</span> Create New Table
+                </h3>
+                <div style="margin-bottom: 10px;">
+                  <label for="inlineTableName" style="font-weight: 600; font-size: 13px; display: block; margin-bottom: 4px;">Table Name</label>
+                  <input type="text" id="inlineTableName" placeholder="Enter table name" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 6px; font-size: 13px; box-sizing: border-box;" />
+                </div>
+                <div style="margin-bottom: 10px;">
+                  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; gap: 6px;">
+                    <label style="font-weight: 600; font-size: 13px;">Column Definitions</label>
+                    <div style="display: flex; gap: 4px;">
+                      <button id="inlineLoadColumnsBtn" class="btn btn-primary" style="padding: 3px 8px; font-size: 11px;">Load</button>
+                      <button id="inlineToggleColumnsBtn" class="btn btn-secondary" style="padding: 3px 8px; font-size: 11px;">Show</button>
+                    </div>
+                  </div>
+                  <div id="inlineColumnsContainer" style="display: none; max-height: 200px; overflow-y: auto; padding: 8px; background: var(--bg-secondary, #fff); border-radius: 6px; border: 1px solid var(--border);">
+                    <p style="color: var(--text-muted); text-align: center; padding: 12px; font-size: 12px;">Click "Load" to load columns from preview</p>
+                  </div>
+                </div>
+                <button id="inlineCreateTableBtn" class="btn btn-success" style="width: 100%; padding: 8px;">✨ Create Table</button>
+              </div>
+              
+              <button id="importBtn" class="btn btn-primary" disabled style="width:100%; margin-top:8px;">
+                📤 Import Data
+              </button>
+            </div>
+
+            <div class="progress-container" id="progressContainer" style="margin-top:12px; display:none;">
+              <div class="progress-bar">
+                <div class="progress-fill" id="progressFill" style="width:0%"></div>
+              </div>
+              <p class="progress-text" id="progressText">Importing...</p>
+            </div>
+          </div>
+        </div>
+        <div class="card" style="margin-top: 0;">
+          <div class="card-header">
+            <span class="icon">📋</span>
+            <h2>Import Log</h2>
+            <button id="toggleLogBtn" class="section-toggle" aria-expanded="false" title="Show / hide Import Log">+</button>
+            <button id="clearLogBtn" class="btn btn-secondary" style="margin-left: 8px; padding: 6px 12px; font-size: 13px;">
+              Clear
+            </button>
+          </div>
+          <div id="logBody" style="display:none;">
+            <div class="import-log" id="importLog">
+            <div class="log-entry info">
+              <div class="log-time">Ready</div>
+              <div class="log-message">Waiting for file selection...</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card" style="margin-top: 24px;">
+          <div class="card-header">
+            <span class="icon">📜</span>
+            <h2>Recent Imports</h2>
+            <button id="toggleRecentBtn" class="section-toggle" aria-expanded="false" title="Show / hide Recent Imports">+</button>
+            <button id="refreshHistoryBtn" class="btn btn-secondary" style="margin-left: 8px; padding: 6px 12px; font-size: 13px;">
+              Refresh
+            </button>
+          </div>
+          <div id="recentBody" style="display:none;">
+            <div class="stats-grid">
+            <div class="stat-card">
+              <div class="stat-value" id="todayImports">0</div>
+              <div class="stat-label">Today's Imports</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-value" id="totalRows">0</div>
+              <div class="stat-label">Total Rows</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-value" id="totalFiles">0</div>
+              <div class="stat-label">Files Processed</div>
+            </div>
+          </div>
+            <div style="overflow-x: auto;">
+            <table class="history-table" id="historyTable">
+              <thead>
+                <tr>
+                  <th>File</th>
+                  <th>Table</th>
+                  <th>Rows</th>
+                  <th>Status</th>
+                  <th>Time</th>
+                </tr>
+              </thead>
+              <tbody id="historyBody">
+                <tr>
+                  <td colspan="5" style="text-align: center; color: var(--text-muted);">Loading...</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Duplicate Action Modal -->
+  <div class="duplicate-modal" id="duplicateModal">
+    <div class="duplicate-content">
+      <h3>⚠️ Duplicate File Detected</h3>
+      <div class="duplicate-info" id="duplicateInfo">
+        <p><strong>File:</strong> <span id="dupFileName"></span></p>
+        <p><strong>Previous Import:</strong> <span id="dupPrevInfo"></span></p>
+        <p><strong>Previous Rows:</strong> <span id="dupPrevRows"></span></p>
+      </div>
+      <p style="margin-bottom: 20px; color: var(--text-secondary);">
+        This file was previously imported. What would you like to do?
+      </p>
+      <div class="btn-group">
+        <button id="dupAppendBtn" class="btn btn-success">➕ Append</button>
+        <button id="dupOverwriteBtn" class="btn btn-danger">🔄 Overwrite</button>
+        <button id="dupSkipBtn" class="btn btn-secondary">⏭️ Skip</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Import Error Modal -->
+  <div class="duplicate-modal" id="errorModal">
+    <div class="duplicate-content">
+      <h3>❌ Import Error Details</h3>
+      <div id="errorInfo" class="duplicate-info">
+        <p><strong>File:</strong> <span id="errFileName"></span></p>
+        <p><strong>Message:</strong> <span id="errMessage"></span></p>
+      </div>
+      <div style="margin-bottom:12px; color:var(--text-secondary);">
+        <div><strong>Missing columns (in file, not in table):</strong></div>
+        <ul id="missingCols" style="margin-top:6px; color:var(--text-primary);"></ul>
+        <div style="margin-top:8px;"><strong>Extra columns (in table, not in file):</strong></div>
+        <ul id="extraCols" style="margin-top:6px; color:var(--text-primary);"></ul>
+      </div>
+      <div style="text-align:right;">
+        <button id="errCloseBtn" class="btn btn-secondary">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Full-page Preview Modal -->
+  <div class="preview-modal" id="previewModal" aria-hidden="true">
+    <div class="preview-content" role="dialog" aria-modal="true">
+      <button class="preview-close" id="previewCloseBtn" title="Close preview">✕</button>
+      <div id="previewModalContent">
+        <!-- Preview HTML will be injected here -->
+      </div>
+    </div>
+  </div>
+
+  <script src="/static/page_transitions.js?v=1"></script>
+  <script>
+    // Theme handling
+    const themeToggle = document.getElementById('themeToggle');
+    const html = document.documentElement;
+    
+    // Load saved theme
+    const savedTheme = localStorage.getItem('theme');
+    if (savedTheme === 'dark') {
+      html.classList.add('dark');
+      themeToggle.textContent = '☀️';
+    }
+    
+    themeToggle.addEventListener('click', () => {
+      html.classList.toggle('dark');
+      const isDark = html.classList.contains('dark');
+      localStorage.setItem('theme', isDark ? 'dark' : 'light');
+      themeToggle.textContent = isDark ? '☀️' : '🌙';
+    });
+
+    // Elements
+    const tableSelect = document.getElementById('tableSelect');
+    const sheetSelect = document.getElementById('sheetSelect');
+    const fileInput = document.getElementById('fileInput');
+    const dropZone = document.getElementById('dropZone');
+    const browseFilesBtn = document.getElementById('browseFilesBtn');
+    const fileList = document.getElementById('fileList');
+    const previewBtn = document.getElementById('previewBtn');
+    const importBtn = document.getElementById('importBtn');
+    const useFirstColHeader = document.getElementById('useFirstColHeader');
+    const previewArea = document.getElementById('previewArea');
+    const importLog = document.getElementById('importLog');
+    const progressContainer = document.getElementById('progressContainer');
+    const progressFill = document.getElementById('progressFill');
+    const progressText = document.getElementById('progressText');
+    const duplicateModal = document.getElementById('duplicateModal');
+    
+    let selectedFiles = [];
+    let lastPreviewColumns = []; // Store columns from last preview for Create Table
+    let lastPreviewTableName = ''; // Store suggested table name
+    
+    // Read token at request time so page works if login happened in another tab
+    function getAuthHeaders() {
+      const t = sessionStorage.getItem('token');
+      return t ? { 'Authorization': 'Bearer ' + t } : {};
+    }
+
+    // Helper: Format file size
+    function formatSize(bytes) {
+      if (bytes < 1024) return bytes + ' B';
+      if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+      return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+    }
+
+    // Helper: Add log entry
+    function addLog(message, type = 'info', details = null) {
+      const now = new Date().toLocaleTimeString();
+      const entry = document.createElement('div');
+      entry.className = `log-entry ${type}`;
+
+      const header = document.createElement('div');
+      header.style.display = 'flex';
+      header.style.alignItems = 'center';
+
+      if (details) {
+        const btn = document.createElement('button');
+        btn.className = 'expand-btn';
+        btn.type = 'button';
+        btn.textContent = '+';
+        btn.setAttribute('aria-expanded', 'false');
+        header.appendChild(btn);
+      }
+
+      const timeEl = document.createElement('div');
+      timeEl.className = 'log-time';
+      timeEl.textContent = now;
+      timeEl.style.marginRight = '8px';
+      header.appendChild(timeEl);
+
+      const msgEl = document.createElement('div');
+      msgEl.className = 'log-message';
+      msgEl.innerHTML = message;
+      header.appendChild(msgEl);
+
+      entry.appendChild(header);
+
+      if (details) {
+        const detailsEl = document.createElement('div');
+        detailsEl.className = 'log-details';
+        detailsEl.innerHTML = details;
+        entry.appendChild(detailsEl);
+      }
+
+      importLog.insertBefore(entry, importLog.firstChild);
+
+      // If a live import activity area exists in the modal, also mirror the log there
+      const liveLog = document.getElementById('liveLog');
+      if (liveLog) {
+        const clone = entry.cloneNode(true);
+        liveLog.insertBefore(clone, liveLog.firstChild);
+      }
+    }
+
+    // Clear log
+    document.getElementById('clearLogBtn').addEventListener('click', () => {
+      importLog.innerHTML = `
+        <div class="log-entry info">
+          <div class="log-time">Ready</div>
+          <div class="log-message">Log cleared</div>
+        </div>
+      `;
+    });
+
+    // Create new table checkbox handler
+    const createNewTableCheck = document.getElementById('createNewTableCheck');
+    const tableSelectGroup = document.getElementById('tableSelectGroup');
+    const inlineCreateTableSection = document.getElementById('inlineCreateTableSection');
+    
+    if (createNewTableCheck) {
+      createNewTableCheck.addEventListener('change', () => {
+        if (createNewTableCheck.checked) {
+          if (tableSelectGroup) tableSelectGroup.style.display = 'none';
+          if (inlineCreateTableSection) inlineCreateTableSection.style.display = 'block';
+          addLog('Create New Table mode enabled. Preview data first, then enter table name and click Create Table.', 'info');
+        } else {
+          if (tableSelectGroup) tableSelectGroup.style.display = 'block';
+          if (inlineCreateTableSection) inlineCreateTableSection.style.display = 'none';
+          addLog('Switched back to existing table selection.', 'info');
+        }
+      });
+    }
+
+    // Inline create table - toggle columns visibility
+    const inlineToggleColumnsBtn = document.getElementById('inlineToggleColumnsBtn');
+    const inlineColumnsContainer = document.getElementById('inlineColumnsContainer');
+    if (inlineToggleColumnsBtn && inlineColumnsContainer) {
+      inlineToggleColumnsBtn.addEventListener('click', () => {
+        if (inlineColumnsContainer.style.display === 'none') {
+          inlineColumnsContainer.style.display = 'block';
+          inlineToggleColumnsBtn.textContent = 'Hide';
+        } else {
+          inlineColumnsContainer.style.display = 'none';
+          inlineToggleColumnsBtn.textContent = 'Show';
+        }
+      });
+    }
+    
+    // Inline create table - Load Columns button (fetches only column names)
+    const inlineLoadColumnsBtn = document.getElementById('inlineLoadColumnsBtn');
+    if (inlineLoadColumnsBtn) {
+      inlineLoadColumnsBtn.addEventListener('click', async () => {
+        const inlineColumnsContainer = document.getElementById('inlineColumnsContainer');
+        const inlineTableName = document.getElementById('inlineTableName');
+        
+        // Check if file is selected
+        if (!selectedFiles || selectedFiles.length === 0) {
+          addLog('❌ Please select a file first.', 'error');
+          return;
+        }
+        
+        // Show loading state
+        inlineLoadColumnsBtn.disabled = true;
+        inlineLoadColumnsBtn.textContent = '...';
+        
+        try {
+          const formData = new FormData();
+          formData.append('file', selectedFiles[0]);
+          
+          if (sheetSelect && sheetSelect.value) {
+            formData.append('sheet_name', sheetSelect.value);
+          }
+          
+          // Use lightweight endpoint that only fetches column names
+          const res = await fetch('/get-columns', {
+            method: 'POST',
+            headers: getAuthHeaders(),
+            body: formData
+          });
+          
+          if (!res.ok) {
+            const errText = await res.text();
+            addLog('❌ Failed to load columns: ' + errText, 'error');
+            return;
+          }
+          
+          const data = await res.json();
+          const columns = data.columns || [];
+          
+          if (columns.length === 0) {
+            addLog('❌ No columns found in the file.', 'error');
+            return;
+          }
+          
+          // Generate suggested table name
+          let suggestedName = 'new_table';
+          if (sheetSelect && sheetSelect.value) {
+            suggestedName = sheetSelect.value.replace(/[^a-zA-Z0-9_]/g, '_').toLowerCase();
+          } else if (selectedFiles[0] && selectedFiles[0].name) {
+            suggestedName = selectedFiles[0].name.replace(/\.[^.]+$/, '').replace(/[^a-zA-Z0-9_]/g, '_').toLowerCase();
+          }
+          
+          // Set table name if not already set
+          if (inlineTableName && !inlineTableName.value) {
+            inlineTableName.value = suggestedName;
+          }
+          
+          // Populate columns
+          if (inlineColumnsContainer) {
+            // Helper to escape HTML
+            const escapeHtml = (str) => {
+              const div = document.createElement('div');
+              div.textContent = str;
+              return div.innerHTML;
+            };
+            
+            // Sanitize column name for data attribute (same as backend)
+            const sanitizeCol = (c) => (c || '').toString().replace(/[^A-Za-z0-9_]/g, '_').slice(0,128);
+            
+            let colHtml = '<div style="display: flex; flex-direction: column; gap: 4px;">';
+            columns.forEach(c => {
+              const displayName = escapeHtml(c.toString());
+              const dataCol = sanitizeCol(c);
+              colHtml += `
+                <div style="display: flex; flex-direction: column; gap: 2px; padding: 6px 8px; background: var(--bg-primary, #f9fafb); border-radius: 4px;">
+                  <div style="font-weight: 600; font-size: 11px; color: var(--text-primary); word-break: break-word;">${displayName || '(unnamed)'}</div>
+                  <select class="col-type-select" data-col="${dataCol}" style="padding: 4px 6px; border: 1px solid var(--border); border-radius: 4px; font-size: 11px; width: 100%;">
+                    <option value="VARCHAR(255)">Text</option>
+                    <option value="NVARCHAR(MAX)">Long Text</option>
+                    <option value="INT">Integer</option>
+                    <option value="BIGINT">Big Int</option>
+                    <option value="FLOAT">Float</option>
+                    <option value="DECIMAL(18,4)">Decimal</option>
+                    <option value="DATETIME">DateTime</option>
+                    <option value="DATE">Date</option>
+                    <option value="BIT">Boolean</option>
+                  </select>
+                </div>
+              `;
+            });
+            colHtml += '</div>';
+            
+            inlineColumnsContainer.innerHTML = colHtml;
+            inlineColumnsContainer.style.display = 'block';
+            const toggleBtn = document.getElementById('inlineToggleColumnsBtn');
+            if (toggleBtn) toggleBtn.textContent = 'Hide';
+            addLog(`✅ Loaded ${columns.length} columns`, 'success');
+          }
+        } catch (e) {
+          addLog('❌ Error loading columns: ' + e.message, 'error');
+        } finally {
+          inlineLoadColumnsBtn.disabled = false;
+          inlineLoadColumnsBtn.textContent = 'Load';
+        }
+      });
+    }
+
+    // Inline create table button handler
+    const inlineCreateTableBtn = document.getElementById('inlineCreateTableBtn');
+    if (inlineCreateTableBtn) {
+      inlineCreateTableBtn.addEventListener('click', async () => {
+        const tableName = document.getElementById('inlineTableName')?.value?.trim();
+        if (!tableName) {
+          addLog('❌ Please enter a table name', 'error');
+          return;
+        }
+        
+        const selects = Array.from(document.querySelectorAll('#inlineColumnsContainer .col-type-select'));
+        const columns = selects.map(s => ({ name: s.dataset.col, type: s.value }));
+        
+        if (columns.length === 0) {
+          addLog('❌ Please click "Load" button to load columns from the file first', 'error');
+          return;
+        }
+        
+        // Disable button during operation
+        inlineCreateTableBtn.disabled = true;
+        inlineCreateTableBtn.textContent = '⏳ Creating...';
+        
+        addLog(`Creating table "${tableName}" with ${columns.length} columns...`, 'info');
+        
+        try {
+          const res = await fetch('/create-table', {
+            method: 'POST',
+            headers: Object.assign({'Content-Type':'application/json'}, getAuthHeaders()),
+            body: JSON.stringify({ table_name: tableName, columns })
+          });
+          
+          if (res.ok) {
+            const j = await res.json();
+            if (j.already_exists) {
+              addLog(`⚠️ Table "${j.table_name || tableName}" already exists!`, 'warning');
+            } else {
+              addLog(`✅ Table "${j.table_name || tableName}" created successfully with ${columns.length} columns!`, 'success');
+            }
+            // Add to dropdown if not already there and select it
+            let existsInDropdown = false;
+            for (let i = 0; i < tableSelect.options.length; i++) {
+              if (tableSelect.options[i].value === (j.table_name || tableName)) {
+                existsInDropdown = true;
+                break;
+              }
+            }
+            if (!existsInDropdown) {
+              const opt = document.createElement('option');
+              opt.value = j.table_name || tableName;
+              opt.textContent = j.table_name || tableName;
+              tableSelect.appendChild(opt);
+            }
+            tableSelect.value = j.table_name || tableName;
+            // Uncheck create new and show dropdown
+            createNewTableCheck.checked = false;
+            if (tableSelectGroup) tableSelectGroup.style.display = 'block';
+            if (inlineCreateTableSection) inlineCreateTableSection.style.display = 'none';
+          } else {
+            let errMsg = '';
+            try {
+              const errJson = await res.json();
+              errMsg = errJson.detail || JSON.stringify(errJson);
+            } catch {
+              errMsg = await res.text();
+            }
+            addLog(`❌ Create table failed: ${errMsg}`, 'error');
+          }
+        } catch (e) {
+          addLog(`❌ Create table error: ${e.message}`, 'error');
+        } finally {
+          // Re-enable button
+          inlineCreateTableBtn.disabled = false;
+          inlineCreateTableBtn.textContent = '✨ Create Table';
+        }
+      });
+    }
+
+    // Load tables
+    async function loadTables() {
+      try {
+        const res = await fetch('/tables', {
+          headers: getAuthHeaders()
+        });
+        if (res.ok) {
+          const data = await res.json();
+          // Backend may return either an array or an object { tables: [...] }
+          let tables = [];
+          if (Array.isArray(data)) tables = data;
+          else if (data && Array.isArray(data.tables)) tables = data.tables;
+          else {
+            console.warn('Unexpected /tables response:', data);
+          }
+
+          tableSelect.innerHTML = `
+            <option value="">-- Select a table --</option>
+          `;
+
+          tables.forEach(t => {
+            const opt = document.createElement('option');
+            opt.value = t.table_name || t;
+            opt.textContent = t.table_name || t;
+            tableSelect.appendChild(opt);
+          });
+          addLog(`Loaded ${tables.length} tables`, 'success');
+        } else {
+          const txt = await res.text();
+          addLog('Failed to load tables: ' + txt, 'error');
+          console.warn('Failed /tables response:', txt);
+        }
+      }
+      catch (e) {
+        addLog('Failed to load tables: ' + e.message, 'error');
+        console.error('loadTables exception:', e);
+      }
+    }
+
+    document.getElementById('refreshTablesBtn').addEventListener('click', loadTables);
+    loadTables();
+
+    // Load sheet names when file is selected
+    async function loadSheetNames() {
+      const sheetStatus = document.getElementById('sheetStatus');
+      if (selectedFiles.length === 0) {
+        if (sheetStatus) sheetStatus.textContent = 'No file selected.';
+        return;
+      }
+
+      const file = selectedFiles[0];
+      if (!file.name.match(/\.xlsx?$/i)) {
+        sheetSelect.innerHTML = '<option value="">N/A (CSV file)</option>';
+        if (sheetStatus) sheetStatus.textContent = 'CSV file selected — no sheets.';
+        console.log('loadSheetNames: CSV file selected, skipping sheet load.');
+        return;
+      }
+
+      if (sheetStatus) sheetStatus.textContent = 'Reading sheets...';
+
+      const formData = new FormData();
+      formData.append('file', file);
+
+      try {
+        const res = await fetch('/get-sheet-names', {
+          method: 'POST',
+          body: formData,
+          headers: getAuthHeaders()
+        });
+        if (res.ok) {
+          const data = await res.json();
+          console.log('get-sheet-names response:', data);
+          sheetSelect.innerHTML = '<option value="">-- Select sheet --</option>';
+          const sheets = data.sheet_names || data.sheets || [];
+          sheets.forEach(sheet => {
+            const opt = document.createElement('option');
+            opt.value = sheet;
+            opt.textContent = sheet;
+            sheetSelect.appendChild(opt);
+          });
+          if (sheets && sheets.length === 1) {
+            sheetSelect.value = sheets[0];
+          }
+          const count = sheets.length;
+          if (sheetStatus) sheetStatus.textContent = `Found ${count} sheet${count === 1 ? '' : 's'}.`;
+          addLog(`Found ${count} sheets in Excel file`, 'info');
+        } else {
+          const txt = await res.text();
+          if (sheetStatus) sheetStatus.textContent = 'Failed to read sheet names.';
+          console.error('get-sheet-names failed:', txt);
+          addLog('Failed to read sheet names: ' + txt, 'error');
+        }
+      } catch (e) {
+        if (sheetStatus) sheetStatus.textContent = 'Failed to read sheet names.';
+        console.error('loadSheetNames exception:', e);
+        addLog('Failed to read sheet names: ' + e.message, 'error');
+      }
+    }
+
+    // File drop zone handlers
+    dropZone.addEventListener('click', () => fileInput.click());
+    
+    dropZone.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      dropZone.classList.add('dragover');
+    });
+    
+    dropZone.addEventListener('dragleave', () => {
+      dropZone.classList.remove('dragover');
+    });
+    
+    dropZone.addEventListener('drop', (e) => {
+      e.preventDefault();
+      dropZone.classList.remove('dragover');
+      handleFiles(e.dataTransfer.files);
+    });
+    
+    fileInput.addEventListener('change', (e) => {
+      handleFiles(e.target.files);
+    });
+
+    if (browseFilesBtn) browseFilesBtn.addEventListener('click', () => fileInput.click());
+
+    function handleFiles(files) {
+      selectedFiles = Array.from(files);
+      updateFileList();
+      updateButtons();
+      loadSheetNames();
+      addLog(`Selected ${selectedFiles.length} file(s)`, 'info');
+      // Reset the file input so selecting the same file again will fire a change event
+      try { fileInput.value = ''; } catch (e) { /* ignore if not available */ }
+    }
+
+    function updateFileList() {
+      fileList.innerHTML = '';
+      selectedFiles.forEach((file, idx) => {
+        const icon = file.name.match(/\.xlsx?$/i) ? '📊' : '📄';
+        const item = document.createElement('div');
+        item.className = 'file-item';
+        item.innerHTML = `
+          <span class="file-icon">${icon}</span>
+          <div class="file-info">
+            <div class="file-name">${file.name}</div>
+            <div class="file-size">${formatSize(file.size)}</div>
+          </div>
+          <button class="remove-btn" data-idx="${idx}">✕</button>
+        `;
+        fileList.appendChild(item);
+      });
+
+      // Remove file handlers
+      fileList.querySelectorAll('.remove-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          const idx = parseInt(e.target.dataset.idx);
+          selectedFiles.splice(idx, 1);
+          updateFileList();
+          updateButtons();
+          // Update sheet selector/status when files change
+          loadSheetNames();
+          addLog('File removed', 'info');
+        });
+      });
+    }
+
+    function updateButtons() {
+      const hasFiles = selectedFiles.length > 0;
+      previewBtn.disabled = !hasFiles;
+      importBtn.disabled = !hasFiles;
+    }
+
+    // Preview data
+    previewBtn.addEventListener('click', async () => {
+      if (selectedFiles.length === 0) return;
+      
+      // Show loading in inline area if present, otherwise show modal loading
+      if (previewArea) {
+        previewArea.innerHTML = '<p style="text-align: center; padding: 20px;">Loading preview...</p>';
+      } else {
+        const modalContent = document.getElementById('previewModalContent');
+        const previewModal = document.getElementById('previewModal');
+        if (modalContent) modalContent.innerHTML = '<p style="text-align: center; padding: 20px;">Loading preview...</p>';
+        if (previewModal) previewModal.classList.add('active');
+      }
+      addLog('Generating preview...', 'info');
+
+      const formData = new FormData();
+      formData.append('file', selectedFiles[0]);
+      if (sheetSelect.value) {
+        formData.append('sheet_name', sheetSelect.value);
+      }
+      if (useFirstColHeader && useFirstColHeader.checked) {
+        formData.append('use_first_column_as_header', 'true');
+      }
+      if (useFirstColHeader && useFirstColHeader.checked) {
+        formData.append('use_first_column_as_header', 'true');
+      }
+
+      try {
+        const res = await fetch('/import-preview', {
+          method: 'POST',
+          body: formData,
+          headers: getAuthHeaders()
+        });
+
+        if (res.ok) {
+          const data = await res.json();
+          renderPreview(data);
+          // Open full-page preview modal
+          const previewModal = document.getElementById('previewModal');
+          if (previewModal) {
+            previewModal.classList.add('active');
+            const closeBtn = document.getElementById('previewCloseBtn');
+            if (closeBtn) closeBtn.focus();
+          }
+          addLog(`Preview: ${data.row_count} rows, ${data.columns?.length || 0} columns`, 'success');
+        } else {
+          // Try to parse JSON error detail
+          let errText = await res.text();
+          try {
+            const j = JSON.parse(errText);
+            errText = j.detail || j.error || JSON.stringify(j);
+          } catch (e) {
+            // not JSON
+          }
+          if (previewArea) previewArea.innerHTML = `<p style="color: var(--danger); padding: 20px;">Error: ${errText}</p>`;
+          else {
+            const modalContent = document.getElementById('previewModalContent');
+            const pm = document.getElementById('previewModal');
+            if (modalContent) modalContent.innerHTML = `<p style="color: var(--danger); padding: 20px;">Error: ${errText}</p>`;
+            if (pm) pm.classList.add('active');
+          }
+          addLog('Preview failed: ' + errText, 'error');
+        }
+      } catch (e) {
+        if (previewArea) previewArea.innerHTML = `<p style="color: var(--danger); padding: 20px;">Error: ${e.message}</p>`;
+        else {
+          const modalContent = document.getElementById('previewModalContent');
+          const pm = document.getElementById('previewModal');
+          if (modalContent) modalContent.innerHTML = `<p style="color: var(--danger); padding: 20px;">Error: ${e.message}</p>`;
+          if (pm) pm.classList.add('active');
+        }
+        addLog('Preview error: ' + e.message, 'error');
+      }
+    });
+
+    function renderPreview(data) {
+      const columns = data.columns || [];
+      const rows = data.rows || [];
+
+      const totalRows = (typeof data.row_count !== 'undefined') ? data.row_count : (data.total_rows || rows.length);
+
+      // Store columns globally for the Load Columns button
+      lastPreviewColumns = columns;
+      
+      // Generate suggested table name
+      let suggestedName = 'new_table';
+      if (sheetSelect && sheetSelect.value) {
+        suggestedName = sheetSelect.value.replace(/[^a-zA-Z0-9_]/g, '_').toLowerCase();
+      } else if (selectedFiles[0] && selectedFiles[0].name) {
+        suggestedName = selectedFiles[0].name.replace(/\.[^.]+$/, '').replace(/[^a-zA-Z0-9_]/g, '_').toLowerCase();
+      }
+      lastPreviewTableName = suggestedName;
+
+      let html = `
+        <p style="margin-bottom: 12px; color: var(--text-secondary);">
+          Showing first ${rows.length} of ${totalRows} rows • ${columns.length} columns
+        </p>
+        `;
+
+      // If creating a new table (checkbox is checked), auto-populate columns
+      const createNewTableCheck = document.getElementById('createNewTableCheck');
+      
+      if (createNewTableCheck && createNewTableCheck.checked) {
+        // Update inline table name
+        const inlineTableName = document.getElementById('inlineTableName');
+        if (inlineTableName && !inlineTableName.value) {
+          inlineTableName.value = suggestedName;
+        }
+        
+        // Auto-populate columns when checkbox is already checked
+        const inlineColumnsContainer = document.getElementById('inlineColumnsContainer');
+        if (inlineColumnsContainer && columns.length > 0) {
+          // Helper to escape HTML
+          const escapeHtml = (str) => {
+            const div = document.createElement('div');
+            div.textContent = str;
+            return div.innerHTML;
+          };
+          const sanitizeCol = (c) => (c || '').toString().replace(/[^A-Za-z0-9_]/g, '_').slice(0,128);
+          
+          let colHtml = '<div style="display: flex; flex-direction: column; gap: 4px;">';
+          columns.forEach(c => {
+            const displayName = escapeHtml(c.toString());
+            const dataCol = sanitizeCol(c);
+            colHtml += `
+              <div style="display: flex; flex-direction: column; gap: 2px; padding: 6px 8px; background: var(--bg-primary, #f9fafb); border-radius: 4px;">
+                <div style="font-weight: 600; font-size: 11px; color: var(--text-primary); word-break: break-word;">${displayName || '(unnamed)'}</div>
+                <select class="col-type-select" data-col="${dataCol}" style="padding: 4px 6px; border: 1px solid var(--border); border-radius: 4px; font-size: 11px; width: 100%;">
+                  <option value="VARCHAR(255)">Text</option>
+                  <option value="NVARCHAR(MAX)">Long Text</option>
+                  <option value="INT">Integer</option>
+                  <option value="BIGINT">Big Int</option>
+                  <option value="FLOAT">Float</option>
+                  <option value="DECIMAL(18,4)">Decimal</option>
+                  <option value="DATETIME">DateTime</option>
+                  <option value="DATE">Date</option>
+                  <option value="BIT">Boolean</option>
+                </select>
+              </div>
+            `;
+          });
+          colHtml += '</div>';
+          
+          inlineColumnsContainer.innerHTML = colHtml;
+          inlineColumnsContainer.style.display = 'block';
+          const toggleBtn = document.getElementById('inlineToggleColumnsBtn');
+          if (toggleBtn) toggleBtn.textContent = 'Hide';
+          addLog(`✅ Auto-loaded ${columns.length} columns from preview`, 'success');
+        }
+      }
+
+      html += `
+        <div class="preview-container">
+          <table class="preview-table">
+            <thead>
+              <tr>
+                ${columns.map(c => `<th>${c}</th>`).join('')}
+              </tr>
+            </thead>
+            <tbody>
+              ${rows.map(row => `
+                <tr>
+                  ${columns.map(c => `<td>${row[c] ?? ''}</td>`).join('')}
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </div>
+      `;
+      if (previewArea) previewArea.innerHTML = html;
+      // Update full-page preview modal if present
+      const modalEl = document.getElementById('previewModalContent');
+      if (modalEl) modalEl.innerHTML = html;
+    }
+
+    // Import data
+    let currentDuplicateAction = null;
+    
+    importBtn.addEventListener('click', () => doImport());
+
+    async function doImport(duplicateAction = null) {
+      if (selectedFiles.length === 0) return;
+      
+      const createNewTableCheck = document.getElementById('createNewTableCheck');
+      const isCreatingNew = createNewTableCheck && createNewTableCheck.checked;
+      const tableName = tableSelect.value;
+      
+      if (!isCreatingNew && !tableName) {
+        addLog('Please select a target table or check "Create New Table"', 'error');
+        return;
+      }
+
+      // Prepare and open live-activity modal
+      const modalContent = document.getElementById('previewModalContent');
+      const previewModal = document.getElementById('previewModal');
+      if (modalContent) {
+        modalContent.innerHTML = `
+          <h3 style="margin-bottom:8px;">Live Import Activity</h3>
+          <div style="margin-bottom:8px;">
+            <div style="height:8px; background:var(--bg-card-alt); border-radius:6px; overflow:hidden;">
+              <div id="liveProgressFill" style="width:0%; height:8px; background:var(--accent);"></div>
+            </div>
+            <div id="liveProgressText" style="font-size:13px; color:var(--text-muted); margin-top:6px;">Starting...</div>
+          </div>
+          <div id="liveLog" style="max-height:64vh; overflow:auto; padding-right:6px;"></div>
+        `;
+      }
+      if (previewModal) previewModal.classList.add('active');
+
+      // Show progress
+      progressContainer.classList.add('active');
+      progressFill.style.width = '30%';
+      progressText.textContent = 'Uploading files...';
+      // mirror initial progress into modal
+      const liveProgressFill = document.getElementById('liveProgressFill');
+      const liveProgressText = document.getElementById('liveProgressText');
+      if (liveProgressFill) liveProgressFill.style.width = progressFill.style.width;
+      if (liveProgressText) liveProgressText.textContent = progressText.textContent;
+      importBtn.disabled = true;
+      addLog('Starting import...', 'info');
+
+      const formData = new FormData();
+      selectedFiles.forEach(f => formData.append('files', f));
+      
+      if (isCreatingNew) {
+        formData.append('create_new', 'true');
+      } else {
+        formData.append('table_name', tableName);
+      }
+      
+      if (sheetSelect.value) {
+        formData.append('sheet_name', sheetSelect.value);
+      }
+      if (useFirstColHeader && useFirstColHeader.checked) {
+        formData.append('use_first_column_as_header', 'true');
+      }
+      
+      if (duplicateAction) {
+        formData.append('duplicate_action', duplicateAction);
+      }
+
+      try {
+        progressFill.style.width = '60%';
+        progressText.textContent = 'Processing data...';
+        if (liveProgressFill) liveProgressFill.style.width = progressFill.style.width;
+        if (liveProgressText) liveProgressText.textContent = progressText.textContent;
+
+        const res = await fetch('/import-data', {
+          method: 'POST',
+          body: formData,
+          headers: getAuthHeaders()
+        });
+
+        progressFill.style.width = '90%';
+        if (liveProgressFill) liveProgressFill.style.width = progressFill.style.width;
+
+        if (res.ok) {
+          const data = await res.json();
+          
+          // Check for duplicates
+          const duplicates = (data.details || []).filter(d => d.duplicate && d.options);
+          
+          if (duplicates.length > 0) {
+            // Show duplicate modal
+            const dup = duplicates[0];
+            document.getElementById('dupFileName').textContent = dup.file;
+            document.getElementById('dupPrevInfo').textContent = dup.duplicate_info?.imported_at 
+              ? new Date(dup.duplicate_info.imported_at).toLocaleString() 
+              : 'Unknown';
+            document.getElementById('dupPrevRows').textContent = dup.duplicate_info?.rows_imported || 0;
+            
+            duplicateModal.classList.add('active');
+            // Ensure live preview/modal is hidden so duplicate actions are selectable
+            const previewModal = document.getElementById('previewModal');
+            if (previewModal && previewModal.classList.contains('active')) {
+              previewModal.classList.remove('active');
+            }
+            // focus first action button for keyboard accessibility
+            setTimeout(() => {
+              const focusBtn = document.getElementById('dupAppendBtn');
+              if (focusBtn) focusBtn.focus();
+            }, 50);
+            progressContainer.classList.remove('active');
+            importBtn.disabled = false;
+            addLog('Duplicate detected - awaiting action', 'warning');
+            return;
+          }
+
+          // Success
+          progressFill.style.width = '100%';
+          progressText.textContent = 'Complete!';
+          if (liveProgressFill) liveProgressFill.style.width = progressFill.style.width;
+          if (liveProgressText) liveProgressText.textContent = progressText.textContent;
+          
+          setTimeout(() => {
+            progressContainer.classList.remove('active');
+            importBtn.disabled = false;
+          }, 1500);
+
+          addLog(`Import successful! ${data.rows_imported} rows imported`, 'success');
+          
+          if (data.details) {
+            data.details.forEach(d => {
+              if (d.success) {
+                addLog(`✓ ${d.file}: ${d.rows} rows → ${d.table}`, 'success');
+              } else {
+                // Show friendly error log and attach details button if structured info present
+                const entryText = `✕ ${d.file}: ${d.error || 'Import failed'}`;
+                // Create log entry with view details button
+                const entry = document.createElement('div');
+                entry.className = 'log-entry error';
+                const now = new Date().toLocaleTimeString();
+                let btnHtml = '';
+                if (d.missing_columns || d.extra_columns) {
+                  btnHtml = ` <button class="btn btn-secondary" data-file="${d.file}" style="margin-left:8px; padding:4px 8px; font-size:12px;">View details</button>`;
+                }
+                entry.innerHTML = `
+                  <div class="log-time">${now}</div>
+                  <div class="log-message">${entryText} ${btnHtml}</div>
+                `;
+                importLog.insertBefore(entry, importLog.firstChild);
+                // Attach click handler if details button exists
+                const btn = entry.querySelector('button');
+                if (btn) {
+                  btn.addEventListener('click', () => {
+                    document.getElementById('errFileName').textContent = d.file || '';
+                    document.getElementById('errMessage').textContent = d.error || '';
+                    const missingEl = document.getElementById('missingCols');
+                    const extraEl = document.getElementById('extraCols');
+                    missingEl.innerHTML = '';
+                    extraEl.innerHTML = '';
+                    (d.missing_columns || []).forEach(c => {
+                      const li = document.createElement('li'); li.textContent = c; missingEl.appendChild(li);
+                    });
+                    (d.extra_columns || []).forEach(c => {
+                      const li = document.createElement('li'); li.textContent = c; extraEl.appendChild(li);
+                    });
+                    document.getElementById('errorModal').classList.add('active');
+                  });
+                }
+              }
+            });
+          }
+
+          // Clear files
+          selectedFiles = [];
+          updateFileList();
+          updateButtons();
+          fileInput.value = '';
+          
+          // Reload history
+          loadImportHistory();
+          
+        } else {
+          const err = await res.text();
+          addLog('Import failed: ' + err, 'error');
+          progressContainer.classList.remove('active');
+          importBtn.disabled = false;
+        }
+      } catch (e) {
+        addLog('Import error: ' + e.message, 'error');
+        progressContainer.classList.remove('active');
+        importBtn.disabled = false;
+      }
+    }
+
+    // Duplicate modal handlers
+    document.getElementById('dupAppendBtn').addEventListener('click', () => {
+      duplicateModal.classList.remove('active');
+      addLog('Appending to existing data...', 'info');
+      doImport('append');
+    });
+
+    document.getElementById('dupOverwriteBtn').addEventListener('click', () => {
+      duplicateModal.classList.remove('active');
+      addLog('Overwriting existing data...', 'warning');
+      doImport('overwrite');
+    });
+
+    document.getElementById('dupSkipBtn').addEventListener('click', () => {
+      duplicateModal.classList.remove('active');
+      addLog('Skipped duplicate file', 'info');
+      progressContainer.classList.remove('active');
+      importBtn.disabled = false;
+    });
+
+    // Error modal close
+    document.getElementById('errCloseBtn').addEventListener('click', () => {
+      document.getElementById('errorModal').classList.remove('active');
+    });
+
+    // Preview modal close handlers (close button and ESC)
+    const previewCloseBtn = document.getElementById('previewCloseBtn');
+    if (previewCloseBtn) {
+      previewCloseBtn.addEventListener('click', () => {
+        const pm = document.getElementById('previewModal');
+        if (pm) pm.classList.remove('active');
+      });
+    }
+
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        const pm = document.getElementById('previewModal');
+        if (pm && pm.classList.contains('active')) pm.classList.remove('active');
+      }
+    });
+
+    // Load import history
+    async function loadImportHistory() {
+      try {
+        const res = await fetch('/recent-activity', {
+          headers: getAuthHeaders()
+        });
+
+        const tbody = document.getElementById('historyBody');
+
+        if (!res.ok) {
+          // Show a helpful message when not authenticated or on error
+          const txt = await res.text();
+          tbody.innerHTML = `<tr><td colspan="5" style="text-align: center; color: var(--text-muted);">Unable to load recent imports: ${res.status} ${res.statusText}</td></tr>`;
+          console.warn('/recent-activity error:', res.status, txt);
+          return;
+        }
+
+        const data = await res.json();
+        const acts = (data.activities || []).filter(a => a.type === 'import').slice(0, 10);
+
+        // Update stats
+        const today = new Date().toDateString();
+        const todayImports = acts.filter(i => new Date(i.timestamp || i.time || '').toDateString() === today).length;
+
+        // Try to extract row counts from description (e.g. "Imported 1,234 rows from ...")
+        const parseRows = (desc) => {
+          if (!desc) return 0;
+          const m = /Imported\s([\d,]+)\srows/i.exec(desc);
+          if (m && m[1]) return parseInt(m[1].replace(/,/g, ''), 10);
+          return 0;
+        };
+
+        const totalRows = acts.reduce((sum, a) => sum + parseRows(a.description), 0);
+        document.getElementById('todayImports').textContent = todayImports;
+        document.getElementById('totalRows').textContent = totalRows.toLocaleString();
+        document.getElementById('totalFiles').textContent = acts.length;
+
+        if (acts.length === 0) {
+          tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; color: var(--text-muted);">No recent imports</td></tr>';
+        } else {
+          // Render each activity as a collapsible row (summary row + hidden detail row)
+          tbody.innerHTML = acts.map((a, i) => {
+            let file = 'N/A', table = 'N/A';
+            if (a.details) {
+              const parts = a.details.split('→').map(s => s.trim());
+              if (parts.length === 2) { file = parts[0]; table = parts[1]; }
+              else file = a.details;
+            }
+            const rows = parseRows(a.description);
+            const time = a.timestamp ? new Date(a.timestamp).toLocaleString() : 'N/A';
+            const status = 'success';
+            const detailId = `recent-detail-${i}`;
+            const summary = `
+              <tr class="history-summary" data-detail-id="${detailId}">
+                <td><button class="expand-btn" type="button" aria-expanded="false">+</button>${file}</td>
+                <td>${table}</td>
+                <td>${rows.toLocaleString()}</td>
+                <td><span class="status-badge ${status}">${status}</span></td>
+                <td>${time}</td>
+              </tr>
+            `;
+            const detail = `
+              <tr id="${detailId}" class="history-detail" style="display:none;">
+                <td colspan="5">
+                  <div class="log-details">${a.description || ''}</div>
+                </td>
+              </tr>
+            `;
+            return summary + detail;
+          }).join('');
+        }
+      } catch (e) {
+        console.error('Failed to load import history:', e);
+        const tbody = document.getElementById('historyBody');
+        tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; color: var(--text-muted);">Failed to load recent imports</td></tr>';
+      }
+    }
+
+    document.getElementById('refreshHistoryBtn').addEventListener('click', loadImportHistory);
+    loadImportHistory();
+
+    // Section toggle for Recent Imports
+    const toggleRecentBtn = document.getElementById('toggleRecentBtn');
+    const recentBody = document.getElementById('recentBody');
+    if (toggleRecentBtn && recentBody) {
+      toggleRecentBtn.addEventListener('click', () => {
+        const expanded = toggleRecentBtn.getAttribute('aria-expanded') === 'true';
+        if (expanded) {
+          recentBody.style.display = 'none';
+          toggleRecentBtn.textContent = '+';
+          toggleRecentBtn.setAttribute('aria-expanded', 'false');
+        } else {
+          recentBody.style.display = '';
+          toggleRecentBtn.textContent = '−';
+          toggleRecentBtn.setAttribute('aria-expanded', 'true');
+        }
+      });
+    }
+
+    // Section toggle for Import Log
+    const toggleLogBtn = document.getElementById('toggleLogBtn');
+    const logBody = document.getElementById('logBody');
+    if (toggleLogBtn && logBody) {
+      toggleLogBtn.addEventListener('click', () => {
+        const expanded = toggleLogBtn.getAttribute('aria-expanded') === 'true';
+        if (expanded) {
+          logBody.style.display = 'none';
+          toggleLogBtn.textContent = '+';
+          toggleLogBtn.setAttribute('aria-expanded', 'false');
+        } else {
+          logBody.style.display = '';
+          toggleLogBtn.textContent = '−';
+          toggleLogBtn.setAttribute('aria-expanded', 'true');
+        }
+      });
+    }
+
+    // Delegate click for expand buttons in import log and recent imports
+    document.addEventListener('click', (e) => {
+      const btn = e.target.closest('.expand-btn');
+      if (!btn) return;
+
+      // Toggle inside import log
+      if (btn.closest('.log-entry')) {
+        const entry = btn.closest('.log-entry');
+        const details = entry.querySelector('.log-details');
+        const expanded = btn.getAttribute('aria-expanded') === 'true';
+        btn.textContent = expanded ? '+' : '−';
+        btn.setAttribute('aria-expanded', (!expanded).toString());
+        if (details) details.style.display = expanded ? 'none' : 'block';
+        return;
+      }
+
+      // Toggle recent-activity detail row
+      const summaryRow = btn.closest('.history-summary');
+      if (summaryRow && summaryRow.dataset.detailId) {
+        const id = summaryRow.dataset.detailId;
+        const detailRow = document.getElementById(id);
+        if (detailRow) {
+          const isHidden = detailRow.style.display === 'none' || !detailRow.style.display;
+          detailRow.style.display = isHidden ? '' : 'none';
+          btn.textContent = isHidden ? '−' : '+';
+          btn.setAttribute('aria-expanded', isHidden ? 'true' : 'false');
+        }
+      }
+    });
+  </script>
+</body>
+</html>

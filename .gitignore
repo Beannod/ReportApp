@@ -25,4 +25,6 @@ Thumbs.db
 
 # App
 instance/settings.json
-import_to_sql/Excel/
+import_to_sql/Excel/*.backup
+*.db
+api_errors.log

@@ -1,5 +1,18 @@
 // Loads the list of report definitions into the modal
 let currentDefId = null;
+let currentStoredProcName = '';
+let storedProcLookupTimer = null;
+let storedProcLookupSeq = 0;
+let storedProcModalTimer = null;
+let storedProcModalSeq = 0;
+
+const storedProcInput = document.getElementById('defStoredProc');
+const storedProcOptions = document.getElementById('storedProcOptions');
+const openStoredProcSearchBtn = document.getElementById('openStoredProcSearchBtn');
+const storedProcSearchModal = document.getElementById('storedProcSearchModal');
+const closeStoredProcSearchBtn = document.getElementById('closeStoredProcSearchBtn');
+const storedProcSearchInput = document.getElementById('storedProcSearchInput');
+const storedProcSearchResults = document.getElementById('storedProcSearchResults');
 async function loadReportDefinitions() {
   const token = sessionStorage.getItem('token');
   const listEl = document.getElementById('defsList');
@@ -32,6 +45,9 @@ async function loadReportDefinitions() {
         const paramsJsonEl = document.getElementById('defParametersJson'); if (paramsJsonEl) paramsJsonEl.value = JSON.stringify(d.parameters || []);
         document.getElementById('defActive').checked = !!d.active;
         msg.textContent = 'Loaded definition #' + d.id;
+        // Enable Manage Access button when a definition is selected
+        const mab = document.getElementById('manageAccessBtn');
+        if (mab) { mab.disabled = false; mab.style.opacity = ''; }
       };
       listEl.appendChild(btn);
     });
@@ -46,9 +62,18 @@ document.addEventListener('DOMContentLoaded', () => {
   reportDefsModal = document.getElementById('reportDefsModal');
   newDefBtn = document.getElementById('newDefBtn');
   const closeDefsBtn = document.getElementById('closeDefsBtn');
+  const showReportDefsBtn2 = document.getElementById('showReportDefsBtn2');
+  
   // Patch: open modal and load definitions
   if (showReportDefsBtn && reportDefsModal) {
     showReportDefsBtn.onclick = () => {
+      reportDefsModal.style.display = 'block';
+      loadReportDefinitions();
+    };
+  }
+  // Wire the second Report Definitions button (in Admin Controls)
+  if (showReportDefsBtn2 && reportDefsModal) {
+    showReportDefsBtn2.onclick = () => {
       reportDefsModal.style.display = 'block';
       loadReportDefinitions();
     };
@@ -64,9 +89,23 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('defStoredProc').value='';
     document.getElementById('defParameters').value='';
     document.getElementById('defActive').checked=true;
+    const paramsJsonEl = document.getElementById('defParametersJson');
+    if (paramsJsonEl) paramsJsonEl.value = '[]';
+    currentStoredProcName = '';
+    displayProcInfo('');
+    updateProcLoaderState();
     const msg = document.getElementById('defMsg');
     if (msg) msg.textContent='New definition';
+    // Disable Manage Access when creating a new definition (no id yet)
+    const mab = document.getElementById('manageAccessBtn');
+    if (mab) { mab.disabled = true; mab.style.opacity = '0.6'; }
   };
+  // Ensure current user is loaded on page load (so we perform the post-login report definitions check)
+  try {
+    if (typeof loadCurrentUser === 'function') loadCurrentUser();
+  } catch (e) {
+    console.warn('Failed to trigger loadCurrentUser on startup:', e);
+  }
 });
 async function postJson(url, payload){
   const r = await fetch(url, {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload)});
@@ -75,6 +114,14 @@ async function postJson(url, payload){
     throw new Error(`HTTP ${r.status}: ${text}`);
   }
   return r.json();
+}
+
+function navigateTo(url) {
+  if (typeof window.navigateWithTransition === 'function') {
+    window.navigateWithTransition(url);
+    return;
+  }
+  window.location.href = url;
 }
 
 // Show notification toast
@@ -87,7 +134,12 @@ function showNotification(message, type = 'info') {
   notification.style.padding = '15px 20px';
   notification.style.borderRadius = '8px';
   notification.style.boxShadow = '0 4px 12px rgba(0,0,0,0.15)';
-  notification.style.zIndex = '10000';
+  // Ensure notifications are displayed above modal overlays/backdrops
+  notification.style.zIndex = '100000';
+  // Avoid being affected by backdrop-filter / inherited blur
+  notification.style.backdropFilter = 'none';
+  notification.style.webkitBackdropFilter = 'none';
+  notification.style.filter = 'none';
   notification.style.maxWidth = '400px';
   notification.style.fontSize = '14px';
   notification.style.fontWeight = '500';
@@ -126,21 +178,80 @@ function showNotification(message, type = 'info') {
 }
 
 function showMain(){
-  document.getElementById('mainSection').style.display = 'block';
+  // Show the user actions section for all authenticated users
+  const userActionsSection = document.getElementById('userActionsSection');
+  if (userActionsSection) userActionsSection.style.display = 'block';
+  
   const username = sessionStorage.getItem('username');
   const role = sessionStorage.getItem('role');
-  if (username) {
-    document.getElementById('currentUser').innerText = username;
+  
+  const currentUser = document.getElementById('currentUser');
+  if (username && currentUser) {
+    currentUser.innerText = username;
   }
+  
   if (role === 'admin') {
-    document.getElementById('adminSection').style.display = 'block';
+    const adminSection = document.getElementById('adminSection');
+    if (adminSection) adminSection.style.display = 'block';
     loadUsers();
+    loadDashboardSummary();
   }
+  
   // Show admin header controls (moved Report DB Settings button) for admins
   const adminHeader = document.getElementById('adminHeaderControls');
   if (adminHeader) {
     if (role === 'admin') adminHeader.style.display = 'flex'; else adminHeader.style.display = 'none';
   }
+
+  // Role-specific visibility for buttons outside the admin section
+  try {
+    const importBtn = document.getElementById('showImportBtnUser');
+    if (importBtn) {
+      // Keep Import visible to all users; only allow navigation for admins
+      importBtn.style.display = 'inline-flex';
+      importBtn.onclick = () => { if (role === 'admin') navigateTo('/import'); else showNotification('Admin access required', 'warning'); };
+    }
+
+    const reportDefsBtn = document.getElementById('showReportDefsBtn');
+    if (reportDefsBtn) {
+      reportDefsBtn.style.display = (role === 'admin') ? 'inline-flex' : 'none';
+    }
+
+    const addPbBtn = document.getElementById('addPowerBIReportBtn');
+    if (addPbBtn) {
+      addPbBtn.style.display = (role === 'admin') ? 'block' : 'none';
+    }
+  } catch (e) {
+    console.warn('Failed to apply role-specific visibility:', e);
+  }
+
+  // Additional restrictions for non-admins: hide report generation and Power BI quick access,
+  // and disable metric inline edit controls.
+  try {
+    const reportBtn = document.getElementById('showReportBtn');
+    if (reportBtn) reportBtn.style.display = 'inline-flex';
+
+    const pbViewBtn = document.getElementById('showPowerBIBtn');
+    if (pbViewBtn) pbViewBtn.style.display = 'inline-flex';
+
+    // Metric edit inputs and edit buttons
+    const metricInputs = document.querySelectorAll('.metric-title-input');
+    metricInputs.forEach(inp => {
+      if (role === 'admin') {
+        inp.style.display = '';
+        inp.disabled = false;
+      } else {
+        inp.style.display = 'none';
+        inp.disabled = true;
+      }
+    });
+
+    const metricEditBtns = document.querySelectorAll('.metric-actions .edit-btn');
+    metricEditBtns.forEach(b => { b.style.display = (role === 'admin') ? '' : 'none'; });
+  } catch (e) {
+    console.warn('Failed to apply additional role restrictions:', e);
+  }
+  
   // If forced password change is pending, open modal
   const force = sessionStorage.getItem('forceChangePassword');
   if (force === '1') {
@@ -149,28 +260,109 @@ function showMain(){
   }
 }
 
+// Load current user from backend and populate sessionStorage, then render UI
+async function loadCurrentUser(){
+  try {
+    const token = sessionStorage.getItem('token');
+    if (!token) { showMain(); return; }
+    const r = await fetch('/api/me', { headers: { 'Authorization': 'Bearer ' + token } });
+    if (!r.ok) {
+      // /api/me may not exist - that's OK, keep existing session data from login
+      // Only clear if we got a 401 (invalid token)
+      if (r.status === 401) {
+        sessionStorage.removeItem('username');
+        sessionStorage.removeItem('role');
+      }
+      showMain();
+      return;
+    }
+    const u = await r.json();
+    if (u && u.username) sessionStorage.setItem('username', u.username);
+    if (u && u.role) sessionStorage.setItem('role', u.role);
+    sessionStorage.setItem('currentUserProfile', JSON.stringify(u || {}));
+    // Prefetch report definitions for quick availability check right after login.
+    // Store a small flag and optional cached list in sessionStorage so other UI flows can consult it.
+    try {
+      const defsRes = await fetch('/report/definitions', { headers: { 'Authorization': 'Bearer ' + token } });
+      if (defsRes.ok) {
+        const defsPayload = await defsRes.json();
+        const items = Array.isArray(defsPayload.items) ? defsPayload.items.filter(it => it && it.active) : [];
+        sessionStorage.setItem('reportDefsAvailable', items.length ? '1' : '0');
+        try { sessionStorage.setItem('reportDefs', JSON.stringify(items)); } catch (_e) { /* ignore storage issues */ }
+      } else {
+        sessionStorage.setItem('reportDefsAvailable', '0');
+        sessionStorage.removeItem('reportDefs');
+      }
+    } catch (_e) {
+      // network or other error — treat as not available
+      sessionStorage.setItem('reportDefsAvailable', '0');
+      sessionStorage.removeItem('reportDefs');
+    }
+  } catch (e) {
+    console.warn('Failed to load current user:', e);
+  }
+  showMain();
+}
+
 const logoutBtn = document.getElementById('logoutBtn');
 if (logoutBtn) logoutBtn.onclick = () => { sessionStorage.clear(); location.reload(); }
 
 // Quick actions navigation
 const goReportBtn = document.getElementById('showReportBtn');
 if (goReportBtn) {
-  goReportBtn.onclick = () => {
-    window.location.href = '/report';
+  goReportBtn.onclick = async () => {
+    const token = sessionStorage.getItem('token');
+    if (!token) {
+      showNotification('Not authenticated — please log in before generating reports.', 'warning');
+      // Redirect to login page and request return to /report after auth
+      const next = encodeURIComponent('/report');
+      window.location.href = '/login?next=' + next;
+      return;
+    }
+
+    // Check whether the current user has any allowed report definitions.
+    try {
+      const res = await fetch('/report/definitions', { headers: { 'Authorization': 'Bearer ' + token } });
+      if (!res.ok) {
+        // If the user can't be authenticated against the API for some reason, redirect to login
+        if (res.status === 401 || res.status === 403) {
+          showNotification('Session expired — please sign in again.', 'warning');
+          window.location.href = '/login?next=' + encodeURIComponent('/report');
+          return;
+        }
+        // For other errors, allow navigation but show a warning
+        showNotification('Unable to check report availability (server error). Trying to open reports page.', 'warning');
+        navigateTo('/report');
+        return;
+      }
+      const payload = await res.json();
+      const items = Array.isArray(payload.items) ? payload.items.filter(it => it && it.active) : [];
+      // If there are no definitions available for this user, show a friendly message and do not navigate.
+      if (!items.length) {
+        showNotification('No report definitions available for your account.', 'warning');
+        return;
+      }
+      // Otherwise navigate to the report page
+      navigateTo('/report');
+    } catch (e) {
+      // Network or other failure — be conservative and allow navigation so user can still attempt
+      showNotification('Network error while checking reports — opening page.', 'warning');
+      navigateTo('/report');
+    }
   };
 }
 
 const goPowerBIBtn = document.getElementById('showPowerBIBtn');
 if (goPowerBIBtn) {
   goPowerBIBtn.onclick = () => {
-    window.location.href = '/powerbi';
+    navigateTo('/powerbi');
   };
 }
 
 // Legacy dashboard Run button -> redirect to new page
 const legacyRunBtn = document.getElementById('runBtn');
 if (legacyRunBtn) {
-  legacyRunBtn.onclick = () => { window.location.href = '/report'; };
+  legacyRunBtn.onclick = () => { navigateTo('/report'); };
 }
 
 // Admin Settings modal wiring (support legacy and new IDs)
@@ -202,6 +394,78 @@ async function loadAdminSettings(){
     const msg = document.getElementById('adminSettingsMsg');
     if (msg) { msg.textContent = 'Failed to load settings: ' + e.message; msg.style.color = 'red'; }
   }
+}
+
+// Load users from backend and populate datalist + users modal
+async function loadUsers(){
+  const token = sessionStorage.getItem('token');
+  try{
+    const r = await fetch('/users', { headers: token ? { 'Authorization': 'Bearer ' + token } : {} });
+    if (!r.ok) {
+      console.warn('Failed to load users for datalist:', await r.text());
+      return;
+    }
+    const users = await r.json();
+    const datalist = document.getElementById('userOptions');
+    if (datalist) {
+      datalist.innerHTML = '';
+      users.forEach(u => {
+        const opt = document.createElement('option');
+        opt.value = u.username;
+        datalist.appendChild(opt);
+      });
+    }
+
+    // If users modal is open or present, render a simple list
+    const usersListEl = document.getElementById('usersList');
+    if (usersListEl) {
+      usersListEl.innerHTML = '';
+      if (!users.length) {
+        usersListEl.innerHTML = '<div style="color:#666; padding:12px;">No users found.</div>';
+      } else {
+        users.forEach(u => {
+          const row = document.createElement('div');
+          row.style.display = 'flex';
+          row.style.justifyContent = 'space-between';
+          row.style.padding = '8px 6px';
+          row.style.borderBottom = '1px solid #f0f0f5';
+          const left = document.createElement('div');
+          left.innerHTML = `<strong style=\"font-size:14px;\">${u.username}</strong><div style=\"font-size:12px;color:#666;\">${u.role} • ${u.created_at||''}</div>`;
+          const right = document.createElement('div');
+          const editBtn = document.createElement('button'); editBtn.textContent = 'Edit'; editBtn.className = 'btn-secondary'; editBtn.style.marginRight='8px';
+          editBtn.onclick = () => { openEditUser(u); };
+          const delBtn = document.createElement('button'); delBtn.textContent = 'Delete'; delBtn.className = 'btn-secondary';
+          delBtn.onclick = () => { if (confirm('Delete user ' + u.username + '?')) deleteUser(u.id); };
+          right.appendChild(editBtn); right.appendChild(delBtn);
+          row.appendChild(left); row.appendChild(right);
+          usersListEl.appendChild(row);
+        });
+      }
+    }
+  }catch(e){
+    console.warn('Error loading users for datalist:', e);
+  }
+}
+
+// Helper to open Edit User modal with data
+function openEditUser(u){
+  const modal = document.getElementById('editUserModal');
+  if (!modal) return;
+  document.getElementById('editUserId').value = u.id;
+  document.getElementById('editUsername').value = u.username;
+  document.getElementById('editUserRole').value = u.role || 'user';
+  document.getElementById('editPassword').value = '';
+  modal.style.display = 'block';
+}
+
+async function deleteUser(id){
+  const token = sessionStorage.getItem('token');
+  try{
+    const r = await fetch('/users/' + id, { method: 'DELETE', headers: token ? { 'Authorization': 'Bearer ' + token } : {} });
+    if (!r.ok) throw new Error(await r.text());
+    showNotification('User deleted', 'success');
+    loadUsers();
+  }catch(e){ showNotification('Delete failed: '+e.message,'error'); }
 }
 
 if (showSettingsBtn && adminSettingsModal) {
@@ -249,54 +513,88 @@ const testReportDbBtn = document.getElementById('testReportDbBtn');
 if (testReportDbBtn) {
   testReportDbBtn.onclick = async () => {
     const status = document.getElementById('reportDbStatus');
-    status.textContent = 'Testing report DB connection...'; status.style.color = '#666';
+    const dbInput = document.getElementById('setReportDatabase');
+    const dbName = dbInput && dbInput.value ? dbInput.value.trim() : '';
+    status.innerHTML = '<span style="display: inline-flex; align-items: center; gap: 6px;">⏳ Testing connection...</span>';
+    status.style.background = '#fff7ed';
+    status.style.border = '1px solid #fed7aa';
+    status.style.color = '#9a3412';
     try {
       const token = sessionStorage.getItem('token');
-      const r = await fetch('/report/db/diag', { headers: token ? { 'Authorization': 'Bearer ' + token } : {} });
+      const url = '/report/db/diag' + (dbName ? `?db=${encodeURIComponent(dbName)}` : '');
+      const r = await fetch(url, { headers: token ? { 'Authorization': 'Bearer ' + token } : {} });
       const data = await r.json();
       if (r.ok) {
-        status.textContent = `Connected. Using DB: ${data.using_database || '(unknown)'} • Tables: ${data.tables_count}`;
-        status.style.color = '#2e7d32';
+        const requested = data.override || dbName || data.using_database;
+        status.innerHTML = `<span style="display: inline-flex; align-items: center; gap: 6px;">✅ <strong>Connected!</strong></span>` +
+          `<br><span style=\"font-size: 12px;\">Database: <strong>${data.using_database || '(unknown)'}</strong> • Tables: <strong>${data.tables_count}</strong></span>` +
+          (requested && data.using_database !== requested ? `<br><span style=\"font-size: 12px; color: #0f172a;\">(Checked value: ${requested})</span>` : '');
+        status.style.background = '#f0fdf4';
+        status.style.border = '1px solid #86efac';
+        status.style.color = '#166534';
       } else {
-        let msg = 'Failed: ' + (data.detail || JSON.stringify(data));
+        let msg = `<span style="display: inline-flex; align-items: center; gap: 6px;">❌ <strong>Connection Failed</strong></span><br><span style="font-size: 12px;">${data.detail || JSON.stringify(data)}`;
         if (data.available_databases && Array.isArray(data.available_databases)) {
-          msg += `\nAvailable: ${data.available_databases.join(', ')}`;
+          msg += `<br>Available DBs: ${data.available_databases.join(', ')}`;
         }
-        status.textContent = msg;
-        status.style.color = '#c62828';
+        msg += '</span>';
+        status.innerHTML = msg;
+        status.style.background = '#fef2f2';
+        status.style.border = '1px solid #fecaca';
+        status.style.color = '#991b1b';
       }
     } catch (e) {
-      status.textContent = 'Error: ' + e.message; status.style.color = '#c62828';
+      status.innerHTML = `<span style="display: inline-flex; align-items: center; gap: 6px;">❌ <strong>Error</strong></span><br><span style="font-size: 12px;">${e.message}</span>`;
+      status.style.background = '#fef2f2';
+      status.style.border = '1px solid #fecaca';
+      status.style.color = '#991b1b';
     }
   };
 }
 
-  // Test runtime DB connectivity using /report/db/diag/runtime
-  const testRuntimeDbBtn = document.getElementById('testRuntimeDbBtn');
-  if (testRuntimeDbBtn) {
-    testRuntimeDbBtn.onclick = async () => {
-      const status = document.getElementById('runtimeDbStatus');
-      status.textContent = 'Testing runtime DB connection...'; status.style.color = '#666';
-      try {
-        const token = sessionStorage.getItem('token');
-        const r = await fetch('/report/db/diag/runtime', { headers: token ? { 'Authorization': 'Bearer ' + token } : {} });
-        const data = await r.json();
-        if (r.ok) {
-          status.textContent = `Connected. Using DB: ${data.using_database || '(unknown)'} • Tables: ${data.tables_count}`;
-          status.style.color = '#2e7d32';
-        } else {
-          let msg = 'Failed: ' + (data.detail || JSON.stringify(data));
-          if (data.available_databases && Array.isArray(data.available_databases)) {
-            msg += `\nAvailable: ${data.available_databases.join(', ')}`;
-          }
-          status.textContent = msg;
-          status.style.color = '#c62828';
+// Test runtime DB connectivity using /report/db/diag/runtime
+const testRuntimeDbBtn = document.getElementById('testRuntimeDbBtn');
+if (testRuntimeDbBtn) {
+  testRuntimeDbBtn.onclick = async () => {
+    const status = document.getElementById('runtimeDbStatus');
+    const runtimeInput = document.getElementById('setReportsDatabase');
+    const runtimeName = runtimeInput && runtimeInput.value ? runtimeInput.value.trim() : '';
+    status.innerHTML = '<span style="display: inline-flex; align-items: center; gap: 6px;">⏳ Testing connection...</span>';
+    status.style.background = '#fff7ed';
+    status.style.border = '1px solid #fed7aa';
+    status.style.color = '#9a3412';
+    try {
+      const token = sessionStorage.getItem('token');
+      const url = '/report/db/diag/runtime' + (runtimeName ? `?db=${encodeURIComponent(runtimeName)}` : '');
+      const r = await fetch(url, { headers: token ? { 'Authorization': 'Bearer ' + token } : {} });
+      const data = await r.json();
+      if (r.ok) {
+        const requested = data.override || runtimeName || data.using_database;
+        status.innerHTML = `<span style="display: inline-flex; align-items: center; gap: 6px;">✅ <strong>Connected!</strong></span>` +
+          `<br><span style=\"font-size: 12px;\">Database: <strong>${data.using_database || '(unknown)'}</strong> • Tables: <strong>${data.tables_count}</strong></span>` +
+          (requested && data.using_database !== requested ? `<br><span style=\"font-size: 12px; color: #0f172a;\">(Checked value: ${requested})</span>` : '');
+        status.style.background = '#f0fdf4';
+        status.style.border = '1px solid #86efac';
+        status.style.color = '#166534';
+      } else {
+        let msg = `<span style="display: inline-flex; align-items: center; gap: 6px;">❌ <strong>Connection Failed</strong></span><br><span style="font-size: 12px;">${data.detail || JSON.stringify(data)}`;
+        if (data.available_databases && Array.isArray(data.available_databases)) {
+          msg += `<br>Available DBs: ${data.available_databases.join(', ')}`;
         }
-      } catch (e) {
-        status.textContent = 'Error: ' + e.message; status.style.color = '#c62828';
+        msg += '</span>';
+        status.innerHTML = msg;
+        status.style.background = '#fef2f2';
+        status.style.border = '1px solid #fecaca';
+        status.style.color = '#991b1b';
       }
-    };
-  }
+    } catch (e) {
+      status.innerHTML = `<span style="display: inline-flex; align-items: center; gap: 6px;">❌ <strong>Error</strong></span><br><span style="font-size: 12px;">${e.message}</span>`;
+      status.style.background = '#fef2f2';
+      status.style.border = '1px solid #fecaca';
+      status.style.color = '#991b1b';
+    }
+  };
+}
 
 // Load database names into datalist
 const loadDatabasesBtn = document.getElementById('loadDatabasesBtn');
@@ -345,10 +643,585 @@ async function loadDriverOptions(){
 }
 if (loadDriversBtn) { loadDriversBtn.onclick = loadDriverOptions; }
 
+// Dashboard helpers: avatar initial and metric animations
+function animateCount(el, to, duration = 900) {
+  if (!el) return;
+  const start = 0;
+  const range = to - start;
+  const minTimer = 50;
+  const stepTime = Math.max(Math.floor(duration / Math.abs(range || 1)), minTimer);
+  let current = start;
+  const step = Math.ceil(range / (duration / stepTime));
+  const timer = setInterval(() => {
+    current += step;
+    if ((step > 0 && current >= to) || (step < 0 && current <= to)) {
+      el.textContent = String(to);
+      clearInterval(timer);
+    } else {
+      el.textContent = String(current);
+    }
+  }, stepTime);
+}
+
+async function loadDashboardSummary() {
+  const targets = {
+    users: document.getElementById('summaryUsers'),
+    imports: document.getElementById('summaryImports'),
+    reports: document.getElementById('summaryReports'),
+    tables: document.getElementById('summaryTables')
+  };
+
+  // Try common endpoints, fall back to placeholder values
+  const endpoints = ['/dashboard/summary', '/api/summary', '/summary'];
+  let data = null;
+  for (const ep of endpoints) {
+    try {
+      const r = await fetch(ep);
+      if (!r.ok) continue;
+      data = await r.json();
+      break;
+    } catch (e) {
+      // ignore and try next
+    }
+  }
+
+  if (!data) {
+    // Use existing DOM values or placeholders
+    const fallback = { users: 12, imports: 34, reports: 5, tables: 8 };
+    animateCount(targets.users, parseInt(targets.users?.textContent || fallback.users));
+    animateCount(targets.imports, parseInt(targets.imports?.textContent || fallback.imports));
+    animateCount(targets.reports, parseInt(targets.reports?.textContent || fallback.reports));
+    animateCount(targets.tables, parseInt(targets.tables?.textContent || fallback.tables));
+    return;
+  }
+
+  // Map expected fields
+  animateCount(targets.users, parseInt(data.users || data.total_users || 0));
+  animateCount(targets.imports, parseInt(data.imports || data.total_imports || 0));
+  animateCount(targets.reports, parseInt(data.reports || data.total_reports || 0));
+  animateCount(targets.tables, parseInt(data.tables || data.total_tables || 0));
+}
+
+// Populate avatar initial from currentUser and trigger summary load on page show
+window.addEventListener('DOMContentLoaded', () => {
+  // Wire visible dropdown buttons (fallback for datalist)
+  document.querySelectorAll('.userDropdownBtn').forEach(btn => {
+    btn.addEventListener('click', (ev) => {
+      ev.stopPropagation();
+      const target = btn.getAttribute('data-target');
+      showUserDropdown(target, btn);
+    });
+  });
+
+  // Close dropdown on Escape key
+  window.addEventListener('keydown', (ev) => {
+    if (ev.key === 'Escape') hideUserDropdown();
+  });
+
+  const currentUserEl = document.getElementById('currentUser');
+  const initialEl = document.getElementById('currentInitial');
+  if (currentUserEl && initialEl) {
+    const name = (currentUserEl.textContent || sessionStorage.getItem('username') || '').trim();
+    const ch = name ? name.charAt(0).toUpperCase() : 'A';
+    initialEl.textContent = ch;
+  }
+
+  // If admin, trigger summary load (showMain already calls loadDashboardSummary(), but ensure availability)
+  try { if (typeof loadDashboardSummary === 'function') loadDashboardSummary(); } catch (e) { console.warn('Summary load failed', e); }
+});
+
+
+
+// Quick search wiring for #globalSearch
+function debounce(fn, delay) {
+  let t;
+  return function(...args) { clearTimeout(t); t = setTimeout(() => fn.apply(this, args), delay); };
+}
+
+async function quickSearchQuery(q) {
+  if (!q || q.trim().length < 2) return null;
+  try {
+    const token = sessionStorage.getItem('token');
+    const headers = token ? { 'Authorization': 'Bearer ' + token } : {};
+    const r = await fetch('/api/search?q=' + encodeURIComponent(q), { headers });
+    if (!r.ok) return null;
+    return await r.json();
+  } catch (e) {
+    return null;
+  }
+}
+
+function renderSearchResults(container, data) {
+  container.innerHTML = '';
+  if (!data || (!Array.isArray(data.results) && !Array.isArray(data))) {
+    const no = document.createElement('div'); no.className = 'no-results'; no.textContent = 'No results'; container.appendChild(no); return;
+  }
+  const items = Array.isArray(data.results) ? data.results : data;
+  items.slice(0,8).forEach(it => {
+    const el = document.createElement('div'); el.className = 'item';
+    const title = it.title || it.name || it.label || it.display || (typeof it === 'string' ? it : JSON.stringify(it));
+    el.textContent = title;
+    el.onclick = () => {
+      if (it.url) { window.location.href = it.url; return; }
+      if (it.id && it.type) { window.location.href = `/${it.type}/${it.id}`; return; }
+      // fallback: put query into search box
+      const gs = document.getElementById('globalSearch'); if (gs) gs.value = title;
+    };
+    container.appendChild(el);
+  });
+}
+
+// Attach input wiring
+window.addEventListener('DOMContentLoaded', () => {
+  const gs = document.getElementById('globalSearch');
+  if (!gs) return;
+  // create container
+  const wrap = document.createElement('div'); wrap.style.position = 'relative'; gs.parentNode.insertBefore(wrap, gs); wrap.appendChild(gs);
+  const results = document.createElement('div'); results.className = 'search-results'; results.style.display = 'none'; wrap.appendChild(results);
+
+  const onInput = debounce(async (ev) => {
+    const q = gs.value.trim();
+    if (!q || q.length < 2) { results.style.display = 'none'; return; }
+    results.style.display = 'block'; results.innerHTML = '<div class="no-results">Searching…</div>';
+    const data = await quickSearchQuery(q);
+    renderSearchResults(results, data || []);
+  }, 300);
+
+  gs.addEventListener('input', onInput);
+  document.addEventListener('click', (ev) => { if (!wrap.contains(ev.target)) results.style.display = 'none'; });
+});
+
+// Metric actions: view details and inline rename
+window.addEventListener('DOMContentLoaded', () => {
+  document.querySelectorAll('.metric-actions .view-btn').forEach(btn => {
+    btn.onclick = async () => {
+      const t = btn.getAttribute('data-target');
+      try { await showMetricDetails(t); } catch(e) { showNotification('Failed to load details: ' + e.message, 'error'); }
+    };
+  });
+
+  document.querySelectorAll('.metric-actions .edit-btn').forEach(btn => {
+    btn.onclick = () => {
+      const target = btn.getAttribute('data-target');
+      const labelEl = document.querySelector(`.metric-label[data-key="${target}"]`);
+      const inputEl = document.querySelector(`.metric-title-input[data-key="${target}"]`);
+      if (!labelEl || !inputEl) return;
+      if (inputEl.style.display === 'block') {
+        // save
+        const v = inputEl.value.trim() || labelEl.textContent;
+        labelEl.textContent = v;
+        inputEl.style.display = 'none';
+        saveUserMetricTitles();
+      } else {
+        inputEl.value = labelEl.textContent;
+        inputEl.style.display = 'block';
+        inputEl.focus();
+        inputEl.onkeydown = (e) => { if (e.key === 'Enter') { btn.click(); } };
+      }
+    };
+  });
+});
+
+// Show metric details in modal by calling backend endpoint
+async function showMetricDetails(metric) {
+  const modal = document.getElementById('metricDetailModal');
+  const titleEl = document.getElementById('metricDetailTitle');
+  const msgEl = document.getElementById('metricDetailMsg');
+  const contentEl = document.getElementById('metricDetailContent');
+  if (!modal || !titleEl || !msgEl || !contentEl) return;
+  titleEl.textContent = metric.charAt(0).toUpperCase() + metric.slice(1) + ' - Details';
+  msgEl.textContent = 'Loading...';
+  contentEl.innerHTML = '';
+  modal.style.display = 'block';
+  try {
+    const token = sessionStorage.getItem('token');
+    const headers = token ? { 'Authorization': 'Bearer ' + token } : {};
+    // pagination state
+    let currentOffset = 0;
+    const pageLimit = 20;
+
+    async function loadPage(offset) {
+      msgEl.textContent = 'Loading...';
+      contentEl.innerHTML = '';
+      try {
+        const r = await fetch(`/api/summary/details/${encodeURIComponent(metric)}?offset=${offset}&limit=${pageLimit}`, { headers });
+        if (r.status === 403) {
+          msgEl.textContent = 'You do not have permission to view these details.';
+          return null;
+        }
+        if (!r.ok) {
+          const txt = await r.text();
+          msgEl.textContent = 'Error: ' + txt;
+          return null;
+        }
+        const data = await r.json();
+        msgEl.textContent = '';
+        return data;
+      } catch (err) {
+        msgEl.textContent = 'Failed to load details: ' + (err.message || err);
+        return null;
+      }
+    }
+
+    function renderTable(data, append = false) {
+      if (!data || !data.items) {
+        contentEl.innerHTML = '<div style="padding:12px; color:#666;">No items found</div>';
+        return;
+      }
+      // create table if not exists
+      let table = contentEl.querySelector('table');
+      if (!table || !append) {
+        contentEl.innerHTML = '';
+        table = document.createElement('table');
+        table.style.width = '100%';
+        table.style.borderCollapse = 'collapse';
+        table.style.marginTop = '8px';
+        const thead = document.createElement('thead');
+        const headRow = document.createElement('tr');
+        headRow.style.textAlign = 'left';
+        headRow.style.borderBottom = '1px solid #e6e6f0';
+        const headers = (metric === 'users') ? ['Username','Role','Created At','Actions'] :
+                        (metric === 'imports') ? ['File','Imported At','Status','Actions'] :
+                        (metric === 'reports') ? ['Report','Updated At','Actions'] :
+                        (metric === 'tables') ? ['Schema','Table','Actions'] : ['Item','Actions'];
+        headers.forEach(h => { const th = document.createElement('th'); th.style.padding='8px'; th.textContent = h; headRow.appendChild(th); });
+        thead.appendChild(headRow);
+        table.appendChild(thead);
+        const tbody = document.createElement('tbody');
+        table.appendChild(tbody);
+        contentEl.appendChild(table);
+      }
+      const tbody = table.querySelector('tbody');
+      data.items.forEach(it => {
+        const tr = document.createElement('tr');
+        tr.style.borderBottom = '1px solid #f1f1f6';
+        if (metric === 'users') {
+          const role = it.role || (it.role === undefined ? '-' : it.role);
+          tr.innerHTML = `<td style="padding:8px">${escapeHtml(it.username||'')}</td>` +
+                         `<td style="padding:8px">${escapeHtml(role)}</td>` +
+                         `<td style="padding:8px">${escapeHtml(it.created_at||'')}</td>` +
+                         `<td style="padding:8px"></td>`;
+          if (it.id) {
+            const btn = document.createElement('button'); btn.className = 'btn-secondary'; btn.textContent = 'Open'; btn.onclick = () => { window.location.href = `/users/${it.id}`; };
+            tr.children[3].appendChild(btn);
+          }
+        } else if (metric === 'imports') {
+          tr.innerHTML = `<td style="padding:8px">${escapeHtml(it.file||'')}</td>` +
+                         `<td style="padding:8px">${escapeHtml(it.imported_at||'')}</td>` +
+                         `<td style="padding:8px">${escapeHtml(it.status||'')}</td>` +
+                         `<td style="padding:8px"></td>`;
+          if (it.id) { const btn = document.createElement('button'); btn.className='btn-secondary'; btn.textContent='Open'; btn.onclick = () => { window.location.href = `/imports/${it.id}`; }; tr.children[3].appendChild(btn); }
+        } else if (metric === 'reports') {
+          tr.innerHTML = `<td style="padding:8px">${escapeHtml(it.report_name||'')}</td>` +
+                         `<td style="padding:8px">${escapeHtml(it.updated_at||'')}</td>` +
+                         `<td style="padding:8px"></td>`;
+          if (it.id) { const btn = document.createElement('button'); btn.className='btn-secondary'; btn.textContent='Open'; btn.onclick = () => { window.location.href = `/report/definitions/${it.id}`; }; tr.children[2].appendChild(btn); }
+        } else if (metric === 'tables') {
+          tr.innerHTML = `<td style="padding:8px">${escapeHtml(it.schema||'')}</td>` +
+                         `<td style="padding:8px">${escapeHtml(it.table||'')}</td>` +
+                         `<td style="padding:8px"></td>`;
+          const btn = document.createElement('button'); btn.className='btn-secondary'; btn.textContent='Open'; btn.onclick = () => { window.location.href = `/tables?name=${encodeURIComponent(it.table||'')}`; }; tr.children[2].appendChild(btn);
+        }
+        tbody.appendChild(tr);
+      });
+
+      // pager
+      let pager = contentEl.querySelector('.detail-pager');
+      if (!pager) {
+        pager = document.createElement('div'); pager.className = 'detail-pager'; pager.style.display='flex'; pager.style.justifyContent='center'; pager.style.marginTop='12px'; pager.style.gap='8px';
+        const loadMore = document.createElement('button'); loadMore.textContent = 'Load more'; loadMore.className = 'btn-primary';
+        loadMore.onclick = async () => {
+          currentOffset += pageLimit;
+          const more = await loadPage(currentOffset);
+          if (!more || !more.items || !more.items.length) { loadMore.disabled = true; loadMore.textContent = 'No more'; return; }
+          renderTable(more, true);
+          if (more.total !== undefined && currentOffset + pageLimit >= more.total) { loadMore.disabled = true; loadMore.textContent = 'No more'; }
+        };
+        pager.appendChild(loadMore);
+        contentEl.appendChild(pager);
+      }
+      // disable load more if at end
+      if (data.total !== undefined) {
+        const loadBtn = contentEl.querySelector('.detail-pager button');
+        if (loadBtn) {
+          if (currentOffset + pageLimit >= data.total) { loadBtn.disabled = true; loadBtn.textContent = 'No more'; }
+          else { loadBtn.disabled = false; loadBtn.textContent = 'Load more'; }
+        }
+      }
+    }
+
+    // initial load
+    const first = await loadPage(currentOffset);
+    if (first) renderTable(first, false);
+  } catch (e) {
+    msgEl.textContent = 'Failed to load details: ' + e.message;
+  }
+}
+
+// Close modal wiring
+window.addEventListener('DOMContentLoaded', () => {
+  const closeBtn = document.getElementById('closeMetricDetailBtn');
+  const modal = document.getElementById('metricDetailModal');
+  if (closeBtn && modal) closeBtn.onclick = () => { modal.style.display = 'none'; };
+  // close if clicked outside
+  if (modal) window.addEventListener('click', (ev) => { if (ev.target === modal) modal.style.display = 'none'; });
+});
+
+// Simple HTML escaper
+function escapeHtml(s) { if (s === null || s === undefined) return ''; return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+// Persist metric titles per-user
+async function saveUserMetricTitles() {
+  const labels = document.querySelectorAll('.metric-label[data-key]');
+  const payload = {};
+  labels.forEach(l => { const k = l.getAttribute('data-key'); payload[k] = l.textContent; });
+  try {
+    await fetch('/api/user-settings', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ metric_titles: payload }) });
+  } catch (e) {
+    console.warn('Failed to save metric titles', e);
+  }
+}
+
+// --- Definition Access (Admin) UI ---
+let defAccessModal, manageAccessBtn, accessListEl, accessAddBtn, accessSaveBtn;
+let accessRows = [];
+
+async function loadDefinitionAccess(defId) {
+  accessRows = [];
+  accessListEl = document.getElementById('accessList');
+  const msg = document.getElementById('accessMsg');
+  if (!defId) { if (accessListEl) accessListEl.innerHTML = '<div style="color:#666">Select a definition first.</div>'; return; }
+  if (accessListEl) accessListEl.innerHTML = '<div style="color:#666">Loading access rules...</div>';
+  try {
+    const token = sessionStorage.getItem('token');
+    const r = await fetch(`/report/definitions/${defId}/access`, { headers: token ? { 'Authorization': 'Bearer ' + token } : {} });
+    if (!r.ok) {
+      const txt = await r.text();
+      if (accessListEl) accessListEl.innerHTML = `<div style="color:#c00">Failed to load: ${txt}</div>`;
+      if (msg) msg.textContent = '';
+      return;
+    }
+    const data = await r.json();
+    accessRows = data.items || data.access || data || [];
+    renderAccessList();
+    if (msg) msg.textContent = '';
+  } catch (e) {
+    if (accessListEl) accessListEl.innerHTML = `<div style="color:#c00">Error: ${e.message}</div>`;
+    if (msg) msg.textContent = '';
+  }
+}
+
+function renderAccessList() {
+  accessListEl = document.getElementById('accessList');
+  if (!accessListEl) return;
+  accessListEl.innerHTML = '';
+  if (!accessRows || !accessRows.length) {
+    accessListEl.innerHTML = '<div style="color:#666; font-size:13px;">No access rows defined. Add one above to restrict or allow access.</div>';
+    return;
+  }
+  accessRows.forEach((r, idx) => {
+    const row = document.createElement('div');
+    row.style.display = 'flex'; row.style.alignItems = 'center'; row.style.gap = '8px'; row.style.padding = '8px'; row.style.borderBottom = '1px solid #eee';
+    const badge = document.createElement('div'); badge.style.minWidth='72px'; badge.style.fontWeight='600'; badge.textContent = (r.principal_type || r.type || 'user').toUpperCase();
+    const princ = document.createElement('div'); princ.style.flex='1'; princ.textContent = r.principal || r.username || r.role || '';
+    const allowed = document.createElement('div'); allowed.style.width='80px'; allowed.textContent = (r.allowed === false || r.allowed === 0) ? 'DENY' : 'ALLOW'; allowed.style.color = (r.allowed === false || r.allowed === 0) ? '#b91c1c' : '#065f46'; allowed.style.fontWeight='700';
+    const removeBtn = document.createElement('button'); removeBtn.className='btn-secondary'; removeBtn.textContent='Remove'; removeBtn.onclick = () => { accessRows.splice(idx,1); renderAccessList(); };
+    row.appendChild(badge); row.appendChild(princ); row.appendChild(allowed); row.appendChild(removeBtn);
+    accessListEl.appendChild(row);
+  });
+}
+
+window.addEventListener('DOMContentLoaded', () => {
+  manageAccessBtn = document.getElementById('manageAccessBtn');
+  defAccessModal = document.getElementById('defAccessModal');
+  accessListEl = document.getElementById('accessList');
+  accessAddBtn = document.getElementById('accessAddBtn');
+  accessSaveBtn = document.getElementById('accessSaveBtn');
+  const accessCancelBtn = document.getElementById('accessCancelBtn');
+  const closeDefAccessBtn = document.getElementById('closeDefAccessBtn');
+
+  if (manageAccessBtn) {
+    manageAccessBtn.onclick = () => {
+      if (!currentDefId) { showNotification('Open or select a definition first', 'warning'); return; }
+      defAccessModal.style.display = 'block';
+      loadDefinitionAccess(currentDefId);
+    };
+  }
+
+  if (accessAddBtn) {
+    accessAddBtn.onclick = () => {
+      const t = document.getElementById('accessAddType').value || 'user';
+      const p = (document.getElementById('accessAddPrincipal').value || '').trim();
+      const a = !!document.getElementById('accessAddAllowed').checked;
+      if (!p) { showNotification('Provide a username or role name to add', 'warning'); return; }
+      accessRows.push({ principal_type: t, principal: p, allowed: a });
+      document.getElementById('accessAddPrincipal').value = '';
+      renderAccessList();
+    };
+  }
+
+  if (accessSaveBtn) {
+    accessSaveBtn.onclick = async () => {
+      const msg = document.getElementById('accessMsg');
+      if (!currentDefId) { showNotification('No definition selected', 'error'); return; }
+      msg.textContent = 'Saving...';
+      try {
+        const token = sessionStorage.getItem('token');
+        const payload = { access: accessRows.map(r => ({ principal_type: r.principal_type || r.type || 'user', principal: r.principal, allowed: !!r.allowed })) };
+        const r = await fetch(`/report/definitions/${currentDefId}/access`, { method: 'PUT', headers: { 'Content-Type': 'application/json', ...(token ? { 'Authorization': 'Bearer ' + token } : {}) }, body: JSON.stringify(payload) });
+        if (!r.ok) { const t = await r.text(); msg.textContent = 'Save failed: ' + t; msg.style.color = 'red'; return; }
+        msg.textContent = 'Saved.'; msg.style.color = 'green';
+        setTimeout(() => { if (defAccessModal) defAccessModal.style.display = 'none'; msg.textContent = ''; }, 800);
+      } catch (e) {
+        msg.textContent = 'Error: ' + e.message; msg.style.color = 'red';
+      }
+    };
+  }
+
+  if (accessCancelBtn) accessCancelBtn.onclick = () => { if (defAccessModal) defAccessModal.style.display = 'none'; };
+  if (closeDefAccessBtn) closeDefAccessBtn.onclick = () => { if (defAccessModal) defAccessModal.style.display = 'none'; };
+  if (defAccessModal) window.addEventListener('click', (ev) => { if (ev.target === defAccessModal) defAccessModal.style.display = 'none'; });
+});
+
+async function loadUserMetricTitles() {
+  try {
+    const r = await fetch('/api/user-settings');
+    if (!r.ok) return;
+    const data = await r.json();
+    const mt = data.metric_titles || {};
+    Object.keys(mt).forEach(k => {
+      const el = document.querySelector(`.metric-label[data-key="${k}"]`);
+      if (el) el.textContent = mt[k];
+    });
+  } catch (e) {
+    // ignore
+  }
+}
+
+// Load persisted metric titles on DOM load
+window.addEventListener('DOMContentLoaded', () => { try { loadUserMetricTitles(); } catch (e) {} });
 // Create User Modal Controls
 const showCreateUserBtn = document.getElementById('showCreateUserBtn');
 const createUserModal = document.getElementById('createUserModal');
 const closeCreateUserBtn = document.getElementById('closeCreateUserBtn');
+
+// --- Mobile App User ---
+const showCreateMobileUserBtn = document.getElementById('showCreateMobileUserBtn');
+const createMobileUserModal = document.getElementById('createMobileUserModal');
+const closeCreateMobileUserBtn = document.getElementById('closeCreateMobileUserBtn');
+
+function openMobilePage(hashRoute, windowName) {
+  const token = sessionStorage.getItem('token');
+  console.log('[MobileSFA] token:', token ? 'found' : 'NOT FOUND');
+  if (!token) {
+    showNotification('You must be logged in to open the mobile app.', 'warning');
+    return;
+  }
+  const username = sessionStorage.getItem('username') || '';
+  const role = sessionStorage.getItem('role') || '';
+  const params = new URLSearchParams({ token, username, role });
+  const safeHashRoute = (hashRoute || 'config').replace(/^#/, '');
+  const url = `http://localhost:5000/app.html?${params.toString()}#${safeHashRoute}`;
+  console.log('[MobileSFA] opening:', url);
+  // Use anchor click to avoid popup blocker
+  const a = document.createElement('a');
+  a.href = url;
+  a.target = windowName;
+  a.rel = 'noopener';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+}
+
+// Manage Mobile SFA modal
+const showMobileSFABtn = document.getElementById('showMobileSFABtn');
+const mobileSFAModal = document.getElementById('mobileSFAModal');
+const closeMobileSFABtn = document.getElementById('closeMobileSFABtn');
+
+if (showMobileSFABtn && mobileSFAModal) {
+  showMobileSFABtn.onclick = () => { mobileSFAModal.style.display = 'block'; };
+}
+if (closeMobileSFABtn && mobileSFAModal) {
+  closeMobileSFABtn.onclick = () => { mobileSFAModal.style.display = 'none'; };
+}
+if (mobileSFAModal) {
+  window.addEventListener('click', (ev) => { if (ev.target === mobileSFAModal) mobileSFAModal.style.display = 'none'; });
+}
+
+const mobileSFAHomeBtn = document.getElementById('mobileSFAHomeBtn');
+if (mobileSFAHomeBtn) {
+  mobileSFAHomeBtn.onclick = () => { openMobilePage('config', 'MobileApp'); mobileSFAModal.style.display = 'none'; };
+}
+
+const mobileSFACreateUserBtn = document.getElementById('mobileSFACreateUserBtn');
+if (mobileSFACreateUserBtn) {
+  mobileSFACreateUserBtn.onclick = () => { openMobilePage('config', 'MobileApp'); mobileSFAModal.style.display = 'none'; };
+}
+
+const mobileSFACustomersBtn = document.getElementById('mobileSFACustomersBtn');
+if (mobileSFACustomersBtn) {
+  mobileSFACustomersBtn.onclick = () => { openMobilePage('config', 'MobileAppCustomers'); mobileSFAModal.style.display = 'none'; };
+}
+
+const mobileSFAOrdersBtn = document.getElementById('mobileSFAOrdersBtn');
+if (mobileSFAOrdersBtn) {
+  mobileSFAOrdersBtn.onclick = () => { openMobilePage('config', 'MobileAppOrders'); mobileSFAModal.style.display = 'none'; };
+}
+if (closeCreateMobileUserBtn && createMobileUserModal) {
+  closeCreateMobileUserBtn.onclick = () => { createMobileUserModal.style.display = 'none'; };
+}
+if (createMobileUserModal) {
+  window.addEventListener('click', (event) => {
+    if (event.target === createMobileUserModal) createMobileUserModal.style.display = 'none';
+  });
+}
+
+const createMobileUserBtn = document.getElementById('createMobileUserBtn');
+if (createMobileUserBtn) {
+  createMobileUserBtn.onclick = async () => {
+    const username = document.getElementById('mobileUsername').value.trim();
+    const password = document.getElementById('mobilePassword').value;
+    const role = document.getElementById('mobileUserRole').value;
+    const msgEl = document.getElementById('createMobileUserMsg');
+
+    if (!username || !password) {
+      msgEl.innerText = 'Username and password are required';
+      msgEl.style.color = 'red';
+      return;
+    }
+
+    try {
+      const token = sessionStorage.getItem('token');
+      const fd = new FormData();
+      fd.append('username', username);
+      fd.append('password', password);
+      fd.append('role', role);
+
+      const res = await fetch('/create-user', {
+        method: 'POST',
+        body: fd,
+        headers: token ? { 'Authorization': 'Bearer ' + token } : {}
+      });
+
+      if (res.ok) {
+        msgEl.innerText = '✓ Mobile user created! Redirecting to mobile app...';
+        msgEl.style.color = 'green';
+        loadUsers();
+        setTimeout(() => {
+          createMobileUserModal.style.display = 'none';
+          openMobilePage('config', 'MobileApp');
+        }, 1000);
+      } else {
+        const err = await res.text();
+        msgEl.innerText = 'Error: ' + err;
+        msgEl.style.color = 'red';
+      }
+    } catch (e) {
+      msgEl.innerText = 'Error: ' + e.message;
+      msgEl.style.color = 'red';
+    }
+  };
+}
 
 if (showCreateUserBtn && createUserModal) {
   showCreateUserBtn.onclick = () => {
@@ -411,9 +1284,10 @@ if (createUserBtn) {
         document.getElementById('newPassword').value = '';
         loadUsers();
         
-        // Close modal after 1 second
+        // Redirect to mobile app after 1 second
         setTimeout(() => {
           createUserModal.style.display = 'none';
+          openMobilePage('config', 'MobileApp');
         }, 1000);
       } else {
         const err = await res.text();
@@ -447,6 +1321,22 @@ async function loadUsers() {
     }
 
     const users = await res.json();
+    // Cache users for the visible dropdown fallback
+    try { window.cachedUsers = users || []; } catch(e) { window.cachedUsers = users || []; }
+    // Populate shared datalist for username suggestions (allows free-text too)
+    try {
+      const datalist = document.getElementById('userOptions');
+      if (datalist) {
+        datalist.innerHTML = '';
+        users.forEach(u => {
+          const opt = document.createElement('option');
+          opt.value = u.username;
+          datalist.appendChild(opt);
+        });
+      }
+    } catch (e) {
+      console.warn('Failed to populate user datalist:', e);
+    }
     if (!users || users.length === 0) {
       listEl.innerHTML = '<div style="padding:12px; color:#666;">No users found. Use "Create User" to add one.</div>';
       return;
@@ -472,6 +1362,69 @@ async function loadUsers() {
     if (listEl) listEl.innerHTML = '<div style="padding:12px; color:#c62828;">Error: ' + (e.message || e) + '</div>';
     console.error('Failed to load users:', e);
   }
+}
+
+// Visible dropdown fallback: show selectable list next to input when user presses the small button
+function showUserDropdown(targetInputId, anchorEl) {
+  const input = document.getElementById(targetInputId);
+  if (!input) return;
+  const users = window.cachedUsers || [];
+  // Create or reuse dropdown container
+  let dd = document.getElementById('userDropdownList');
+  if (!dd) {
+    dd = document.createElement('div');
+    dd.id = 'userDropdownList';
+    dd.style.position = 'absolute';
+    dd.style.zIndex = '200000';
+    dd.style.background = 'white';
+    dd.style.border = '1px solid #ddd';
+    dd.style.borderRadius = '6px';
+    dd.style.boxShadow = '0 8px 24px rgba(0,0,0,0.12)';
+    dd.style.maxHeight = '260px';
+    dd.style.overflow = 'auto';
+    dd.style.minWidth = '220px';
+    document.body.appendChild(dd);
+  }
+  // Build list filtered by current input value
+  const q = (input.value || '').toLowerCase();
+  const items = users.filter(u => (u.username || '').toLowerCase().includes(q)).slice(0,200);
+  dd.innerHTML = '';
+  if (!items.length) {
+    const el = document.createElement('div'); el.textContent = 'No users'; el.style.padding = '8px'; el.style.color = '#666'; dd.appendChild(el);
+  } else {
+    items.forEach(u => {
+      const el = document.createElement('div');
+      el.textContent = u.username;
+      el.style.padding = '8px 10px';
+      el.style.cursor = 'pointer';
+      el.style.borderBottom = '1px solid #f4f4f6';
+      el.onmouseover = () => { el.style.background = '#f3f4f6'; };
+      el.onmouseout = () => { el.style.background = 'transparent'; };
+      el.onclick = () => { input.value = u.username; hideUserDropdown(); input.focus(); };
+      dd.appendChild(el);
+    });
+  }
+  // position near anchorEl
+  const rect = anchorEl.getBoundingClientRect();
+  dd.style.left = (rect.left + window.scrollX) + 'px';
+  dd.style.top = (rect.bottom + window.scrollY + 6) + 'px';
+  dd.style.display = 'block';
+  // focus management: clicking outside closes
+  setTimeout(() => { window.addEventListener('click', onDocClickForUserDropdown); }, 10);
+}
+
+function hideUserDropdown() {
+  const dd = document.getElementById('userDropdownList');
+  if (dd) dd.style.display = 'none';
+  window.removeEventListener('click', onDocClickForUserDropdown);
+}
+
+function onDocClickForUserDropdown(ev) {
+  const dd = document.getElementById('userDropdownList');
+  if (!dd) return window.removeEventListener('click', onDocClickForUserDropdown);
+  if (ev.target.closest && ev.target.closest('#userDropdownList')) return;
+  if (ev.target.classList && ev.target.classList.contains('userDropdownBtn')) return;
+  hideUserDropdown();
 }
 
 // Users Modal Controls
@@ -773,6 +1726,7 @@ async function updateDbBanner() {
 
 // Load dashboard summary metrics and populate tiles
 async function loadDashboardSummary() {
+  console.log('[Dashboard] Loading summary statistics...');
   try {
     const usersEl = document.getElementById('summaryUsers');
     const impEl = document.getElementById('summaryImports');
@@ -780,14 +1734,30 @@ async function loadDashboardSummary() {
     const repEl = document.getElementById('summaryReports');
     const repLastEl = document.getElementById('summaryReportsLast');
     const tablesEl = document.getElementById('summaryTables');
-    if (!usersEl || !impEl || !repEl) return;
+    
+    console.log('[Dashboard] Elements found:', {
+      usersEl: !!usersEl,
+      impEl: !!impEl,
+      repEl: !!repEl,
+      tablesEl: !!tablesEl
+    });
+    
+    if (!usersEl || !impEl || !repEl) {
+      console.warn('[Dashboard] Missing required elements, aborting');
+      return;
+    }
 
     const token = sessionStorage.getItem('token');
+    console.log('[Dashboard] Fetching /dashboard/summary...');
     const res = await fetch('/dashboard/summary', {
       headers: token ? { 'Authorization': 'Bearer ' + token } : {}
     });
+    
+    console.log('[Dashboard] Response status:', res.status);
+    
     if (!res.ok) {
       // Graceful fallback when SQL Server not configured/available or server error
+      console.warn('[Dashboard] Summary endpoint returned error, using fallback values');
       usersEl.textContent = '0';
       impEl.textContent = '0';
       repEl.textContent = '0';
@@ -797,6 +1767,7 @@ async function loadDashboardSummary() {
       return;
     }
     const data = await res.json();
+    console.log('[Dashboard] Received data:', data);
 
     // Animate numbers counting up
     animateValue(usersEl, 0, data.users_total || 0, 800);
@@ -886,16 +1857,24 @@ function formatRelativeTime(date) {
 }
 
 async function loadRecentActivity() {
+  console.log('[Dashboard] Loading recent activity...');
   const activityEl = document.getElementById('recentActivity');
-  if (!activityEl) return;
+  if (!activityEl) {
+    console.warn('[Dashboard] recentActivity element not found');
+    return;
+  }
   
   try {
     const token = sessionStorage.getItem('token');
+    console.log('[Dashboard] Fetching /recent-activity...');
     const res = await fetch('/recent-activity', {
       headers: token ? { 'Authorization': 'Bearer ' + token } : {}
     });
     
+    console.log('[Dashboard] Recent activity response status:', res.status);
+    
     if (!res.ok) {
+      console.warn('[Dashboard] Recent activity endpoint returned error');
       activityEl.innerHTML = `
         <div style="text-align: center; color: #999; padding: 40px 20px;">
           <span style="font-size: 48px; opacity: 0.3;">📋</span>
@@ -1209,33 +2188,32 @@ if (fileInput && sheetNameSelect) {
   });
 }
 
-if (showImportBtn && importModal) {
+// Admin import button - Navigate to import page
+if (showImportBtn) {
   showImportBtn.onclick = () => {
-    importModal.style.display = 'block';
-    document.getElementById('importMsg').innerText = '';
-    document.getElementById('fileInput').value = '';
-    if (sheetNameSelect) sheetNameSelect.innerHTML = '<option value="">-- Select a file first --</option>';
-    loadTables();
+    navigateTo('/import');
   };
 }
 
-// User import button (for non-admin users)
+// User import button (for non-admin users) - Navigate to import page
 const showImportBtnUser = document.getElementById('showImportBtnUser');
-if (showImportBtnUser && importModal) {
+if (showImportBtnUser) {
   showImportBtnUser.onclick = () => {
-    importModal.style.display = 'block';
-    document.getElementById('importMsg').innerText = '';
-    document.getElementById('fileInput').value = '';
-    if (sheetNameSelect) sheetNameSelect.innerHTML = '<option value="">-- Select a file first --</option>';
-    loadTables();
+    navigateTo('/import');
   };
 }
 
-// Report button (for all users)
+// Report button (for all users) — check for token first to preserve UX
 const showReportBtn = document.getElementById('showReportBtn');
 if (showReportBtn) {
   showReportBtn.onclick = () => {
-    window.location.href = 'report.html';
+    const token = sessionStorage.getItem('token');
+    if (!token) {
+      // Redirect unauthenticated users to login and return them to the report page
+      window.location.href = '/login?next=/report';
+      return;
+    }
+    navigateTo('/report');
   };
 }
 
@@ -1316,32 +2294,76 @@ const paramsEditorList = document.getElementById('paramsEditorList');
 const addParamRowBtn = document.getElementById('addParamRowBtn');
 const saveParamsBtn = document.getElementById('saveParamsBtn');
 const closeParamEditorBtn = document.getElementById('closeParamEditorBtn');
+const loadProcParamsBtn = document.getElementById('loadProcParamsBtn');
+const paramProcInfo = document.getElementById('paramProcInfo');
+
+function displayProcInfo(procName) {
+  if (!paramProcInfo) return;
+  if (procName) {
+    paramProcInfo.innerHTML = 'Stored procedure: <strong>' + procName + '</strong>';
+    paramProcInfo.style.color = '#1e293b';
+    paramProcInfo.dataset.proc = procName;
+  } else {
+    paramProcInfo.innerHTML = 'Stored procedure: <strong>Not set</strong>';
+    paramProcInfo.style.color = '#64748b';
+    paramProcInfo.dataset.proc = '';
+  }
+}
+
+function updateProcLoaderState() {
+  if (!loadProcParamsBtn) return;
+  const canLoad = !!currentStoredProcName;
+  loadProcParamsBtn.disabled = !canLoad;
+  loadProcParamsBtn.style.opacity = canLoad ? '1' : '0.5';
+  loadProcParamsBtn.style.cursor = canLoad ? 'pointer' : 'not-allowed';
+  loadProcParamsBtn.title = canLoad ? 'Pull parameters from ' + currentStoredProcName : 'Assign a stored procedure first.';
+}
 
 function renderParamRows(params) {
   if (!paramsEditorList) return;
   paramsEditorList.innerHTML = '';
   if (!params || params.length === 0) {
-    paramsEditorList.innerHTML = '<div style="color:#666; font-size:13px;">No parameters defined. Click "Add Parameter" to create one.</div>';
+    paramsEditorList.innerHTML = '<div style=\"color:#666; font-size:13px;\">No parameters defined. Click "Add Parameter" or load them from the stored procedure.</div>';
     return;
   }
-  params.forEach((p, idx) => {
+  params.forEach((p) => {
+    const name = typeof p === 'string' ? p : (p && p.name) || '';
+    const valuesQuery = typeof p === 'string' ? '' : (p && p.values_query) || '';
+    const mode = typeof p === 'string' ? '' : (p && (p.mode || p.parameter_mode)) || '';
+    const dtype = typeof p === 'string' ? '' : (p && (p.type || p.data_type)) || '';
     const row = document.createElement('div');
     row.style.display = 'grid';
-    row.style.gridTemplateColumns = '1fr 2fr auto';
+    row.style.gridTemplateColumns = 'minmax(140px, 1fr) minmax(220px, 2fr) auto';
     row.style.gap = '8px';
     row.style.alignItems = 'center';
+    row.dataset.paramMode = mode || '';
+    row.dataset.paramType = dtype || '';
     const nameInput = document.createElement('input');
-    nameInput.placeholder = 'name (e.g., p_city)';
-    nameInput.value = typeof p === 'string' ? p : (p.name || '');
+    nameInput.placeholder = 'Parameter name';
+    nameInput.value = name;
+    if (dtype || mode) {
+      nameInput.title = (mode ? mode + ' • ' : '') + (dtype || '');
+    }
+    const queryContainer = document.createElement('div');
+    queryContainer.style.display = 'flex';
+    queryContainer.style.flexDirection = 'column';
+    queryContainer.style.gap = '4px';
     const queryInput = document.createElement('input');
     queryInput.placeholder = 'Optional values_query (SQL)';
-    queryInput.value = typeof p === 'string' ? '' : (p.values_query || '');
+    queryInput.value = valuesQuery;
+    const metaLabel = document.createElement('div');
+    metaLabel.style.fontSize = '11px';
+    metaLabel.style.color = '#64748b';
+    metaLabel.style.display = (dtype || mode) ? 'block' : 'none';
+    metaLabel.textContent = (mode ? mode + ' • ' : '') + (dtype || '');
+    queryContainer.appendChild(queryInput);
+    queryContainer.appendChild(metaLabel);
     const removeBtn = document.createElement('button');
     removeBtn.textContent = 'Remove';
     removeBtn.className = 'btn-secondary';
     removeBtn.onclick = () => { row.remove(); };
     row.appendChild(nameInput);
-    row.appendChild(queryInput);
+    row.appendChild(queryContainer);
     row.appendChild(removeBtn);
     paramsEditorList.appendChild(row);
   });
@@ -1354,48 +2376,171 @@ function collectParamRows() {
     if (child.tagName !== 'DIV') continue;
     const inputs = child.querySelectorAll('input');
     if (!inputs || inputs.length < 1) continue;
-    // Normalize name: trim and remove leading @ characters
     const name = inputs[0].value.trim().replace(/^@+/, '');
-    const values_query = inputs[1] ? inputs[1].value.trim() : '';
     if (!name) continue;
-    if (values_query) rows.push({ name, values_query }); else rows.push(name);
+    const values_query = inputs[1] ? inputs[1].value.trim() : '';
+    const mode = child.dataset ? (child.dataset.paramMode || '') : '';
+    const dtype = child.dataset ? (child.dataset.paramType || '') : '';
+    const payload = { name };
+    if (values_query) payload.values_query = values_query;
+    if (mode) payload.mode = mode;
+    if (dtype) payload.type = dtype;
+    if (Object.keys(payload).length === 1) rows.push(name);
+    else rows.push(payload);
   }
   return rows;
 }
 
+function syncDefinitionParameterFields(params) {
+  const jsonEl = document.getElementById('defParametersJson');
+  if (jsonEl) jsonEl.value = JSON.stringify(params || []);
+  const csvEl = document.getElementById('defParameters');
+  if (csvEl) {
+    csvEl.value = (params || []).map(p => typeof p === 'string' ? p : (p && p.name) || '').filter(Boolean).join(',');
+  }
+}
+
+function mergeProcedureParameters(fetched, existing) {
+  const existingMap = new Map();
+  (existing || []).forEach((item) => {
+    if (!item) return;
+    if (typeof item === 'string') {
+      existingMap.set(item.toLowerCase(), { name: item });
+    } else if (typeof item === 'object') {
+      const key = (item.name || '').toLowerCase();
+      if (!key) return;
+      existingMap.set(key, { ...item });
+    }
+  });
+  const merged = [];
+  const seen = new Set();
+  (fetched || []).forEach((meta) => {
+    if (!meta) return;
+    const rawName = (meta.name || '').trim().replace(/^@+/, '');
+    if (!rawName) return;
+    const key = rawName.toLowerCase();
+    seen.add(key);
+    const existingItem = existingMap.get(key);
+    if (existingItem) {
+      const mergedItem = { ...existingItem, name: existingItem.name || rawName };
+      if (meta.mode) mergedItem.mode = meta.mode;
+      if (meta.type) mergedItem.type = meta.type;
+      if (mergedItem.values_query) {
+        merged.push(mergedItem);
+      } else if (Object.keys(mergedItem).length === 1) {
+        merged.push(mergedItem.name);
+      } else {
+        merged.push(mergedItem);
+      }
+    } else {
+      const newItem = { name: rawName };
+      if (meta.mode) newItem.mode = meta.mode;
+      if (meta.type) newItem.type = meta.type;
+      if (Object.keys(newItem).length === 1) merged.push(rawName);
+      else merged.push(newItem);
+    }
+  });
+  (existing || []).forEach((item) => {
+    let name = '';
+    if (typeof item === 'string') name = item;
+    else if (item && typeof item === 'object') name = item.name || '';
+    const key = name.toLowerCase();
+    if (!name || seen.has(key)) return;
+    merged.push(item);
+  });
+  return merged;
+}
+
+displayProcInfo(currentStoredProcName);
+updateProcLoaderState();
+
 if (editParamsBtn) {
   editParamsBtn.onclick = async () => {
     if (!currentDefId) {
-      document.getElementById('defMsg').textContent = 'Select a definition first to edit parameters.';
+      const msgEl = document.getElementById('defMsg');
+      if (msgEl) msgEl.textContent = 'Select a definition first to edit parameters.';
       return;
     }
-    // Load full definition from API to get structured parameters
     const token = sessionStorage.getItem('token');
     try {
       const r = await fetch('/report/definitions/' + currentDefId, { headers: { 'Authorization': 'Bearer ' + token } });
       if (!r.ok) { const t = await r.text(); throw new Error(t || 'Failed to load definition'); }
       const def = await r.json();
       const params = def.parameters || [];
+      currentStoredProcName = (def.stored_procedure || '').trim();
+      displayProcInfo(currentStoredProcName);
+      updateProcLoaderState();
       renderParamRows(params);
+      syncDefinitionParameterFields(params);
+      const editorMsg = document.getElementById('paramEditorMsg');
+      if (editorMsg) { editorMsg.textContent = ''; editorMsg.style.color = '#475569'; }
       if (paramEditorModal) paramEditorModal.style.display = 'block';
     } catch (e) {
-      document.getElementById('defMsg').textContent = 'Error loading definition: ' + e.message;
+      const msgEl = document.getElementById('defMsg');
+      if (msgEl) msgEl.textContent = 'Error loading definition: ' + e.message;
+      currentStoredProcName = '';
+      displayProcInfo('');
+      updateProcLoaderState();
+    }
+  };
+}
+
+if (loadProcParamsBtn) {
+  loadProcParamsBtn.onclick = async () => {
+    if (!currentDefId) {
+      const msgEl = document.getElementById('paramEditorMsg');
+      if (msgEl) { msgEl.textContent = 'Save this report definition before loading parameters.'; msgEl.style.color = '#b91c1c'; }
+      return;
+    }
+    if (!currentStoredProcName) {
+      const msgEl = document.getElementById('paramEditorMsg');
+      if (msgEl) { msgEl.textContent = 'Assign a stored procedure to this definition first.'; msgEl.style.color = '#b91c1c'; }
+      return;
+    }
+    const msgEl = document.getElementById('paramEditorMsg');
+    if (msgEl) { msgEl.textContent = 'Loading parameters from ' + currentStoredProcName + '...'; msgEl.style.color = '#0f172a'; }
+    const token = sessionStorage.getItem('token');
+    const previousLabel = loadProcParamsBtn.textContent;
+    loadProcParamsBtn.textContent = 'Loading...';
+    loadProcParamsBtn.disabled = true;
+    loadProcParamsBtn.style.opacity = '0.5';
+    try {
+      const r = await fetch('/report/proc-parameters?name=' + encodeURIComponent(currentStoredProcName), { headers: token ? { 'Authorization': 'Bearer ' + token } : {} });
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.detail || 'Failed to load parameters');
+      const fetched = (data.parameters || []).map((p) => ({ name: p.name, mode: p.mode, type: p.type }));
+      if (!fetched.length) {
+        if (msgEl) { msgEl.textContent = 'No parameters were exposed for ' + currentStoredProcName + '.'; msgEl.style.color = '#b91c1c'; }
+        return;
+      }
+      const existing = collectParamRows();
+      const merged = mergeProcedureParameters(fetched, existing);
+      renderParamRows(merged);
+      syncDefinitionParameterFields(merged);
+      if (msgEl) {
+        msgEl.textContent = 'Loaded ' + fetched.length + ' parameter' + (fetched.length === 1 ? '' : 's') + ' from ' + currentStoredProcName + '. Review and click Save Parameters to persist.';
+        msgEl.style.color = '#166534';
+      }
+    } catch (e) {
+      if (msgEl) { msgEl.textContent = 'Failed to load procedure parameters: ' + e.message; msgEl.style.color = '#b91c1c'; }
+    } finally {
+      loadProcParamsBtn.textContent = previousLabel;
+      updateProcLoaderState();
     }
   };
 }
 
 if (addParamRowBtn) addParamRowBtn.onclick = () => {
-  // append an empty row
-  renderParamRows(collectParamRows().concat(['']));
+  const current = collectParamRows();
+  renderParamRows(current.concat(['']));
 };
 
 if (saveParamsBtn) saveParamsBtn.onclick = () => {
   const arr = collectParamRows();
-  // store JSON into hidden textarea for save handler to pick up
   const el = document.getElementById('defParametersJson');
   if (el) el.value = JSON.stringify(arr);
-  document.getElementById('paramEditorMsg').textContent = 'Parameters updated locally. Click Save Changes to persist.';
-  // close editor
+  const msgNode = document.getElementById('paramEditorMsg');
+  if (msgNode) { msgNode.textContent = 'Parameters updated locally. Click Save Changes to persist.'; msgNode.style.color = '#0f172a'; }
   if (paramEditorModal) paramEditorModal.style.display = 'none';
 };
 
@@ -1403,11 +2548,8 @@ if (saveParamsBtn) saveParamsBtn.onclick = () => {
 if (saveParamsBtn) {
   const originalHandler = saveParamsBtn.onclick;
   saveParamsBtn.onclick = async () => {
-    // run original behaviour (populate hidden field and close)
     try { originalHandler && originalHandler(); } catch (e) { /* ignore */ }
-    // If a current definition is selected, call PUT to persist parameters immediately
     if (!currentDefId) {
-      // no definition selected — nothing to persist
       return;
     }
     const token = sessionStorage.getItem('token');
@@ -1415,13 +2557,11 @@ if (saveParamsBtn) {
     const paramsEl = document.getElementById('defParametersJson');
     let paramsPayload = [];
     if (paramsEl && paramsEl.value && paramsEl.value.trim()) {
-      try { paramsPayload = JSON.parse(paramsEl.value); } catch (e) { if (msgEl) msgEl.textContent = 'Invalid parameters JSON: ' + e.message; return; }
+      try { paramsPayload = JSON.parse(paramsEl.value); } catch (e) { if (msgEl) { msgEl.textContent = 'Invalid parameters JSON: ' + e.message; msgEl.style.color = '#b91c1c'; } return; }
     }
-    // Build body using existing fields; if blank, fetch current definition to preserve values
     let rn = (document.getElementById('defReportName') && document.getElementById('defReportName').value.trim()) || '';
     let sp = (document.getElementById('defStoredProc') && document.getElementById('defStoredProc').value.trim()) || '';
     let active = (document.getElementById('defActive') && document.getElementById('defActive').checked) || false;
-    // If name or stored proc missing, fetch existing def to avoid overwriting with empty strings
     if (!rn || !sp) {
       try {
         const rdef = await fetch('/report/definitions/' + currentDefId, { headers: (token ? { 'Authorization': 'Bearer ' + token } : {}) });
@@ -1432,7 +2572,7 @@ if (saveParamsBtn) {
           active = typeof j.active !== 'undefined' ? j.active : active;
         }
       } catch (e) {
-        // ignore; we'll still attempt save with whatever we have
+        // use whatever values we have
       }
     }
     const body = { report_name: rn, stored_procedure: sp, parameters: paramsPayload, active: active };
@@ -1444,28 +2584,25 @@ if (saveParamsBtn) {
       });
       if (!r.ok) {
         const t = await r.text();
-        if (msgEl) { msgEl.textContent = 'Failed to save parameters: ' + t; msgEl.style.color = 'red'; }
+        if (msgEl) { msgEl.textContent = 'Failed to save parameters: ' + t; msgEl.style.color = '#b91c1c'; }
         return;
       }
-      // Confirm by reloading the single definition and updating UI
       try {
         const rd = await fetch('/report/definitions/' + currentDefId, { headers: (token ? { 'Authorization': 'Bearer ' + token } : {}) });
         if (rd.ok) {
           const jd = await rd.json();
-          // update hidden field and visible CSV preview
           const paramsEl2 = document.getElementById('defParametersJson'); if (paramsEl2) paramsEl2.value = JSON.stringify(jd.parameters || []);
           const csvEl = document.getElementById('defParameters'); if (csvEl) csvEl.value = (jd.parameters||[]).map(p => (typeof p === 'string' ? p : (p.name||''))).filter(Boolean).join(',');
-          if (msgEl) { msgEl.textContent = 'Parameters saved.'; msgEl.style.color = 'green'; }
+          if (msgEl) { msgEl.textContent = 'Parameters saved.'; msgEl.style.color = '#166534'; }
         } else {
-          if (msgEl) { msgEl.textContent = 'Parameters saved (server did not return updated definition).'; msgEl.style.color = 'green'; }
+          if (msgEl) { msgEl.textContent = 'Parameters saved (server did not return updated definition).'; msgEl.style.color = '#166534'; }
         }
       } catch (e) {
-        if (msgEl) { msgEl.textContent = 'Parameters saved, but failed to refresh: ' + e.message; msgEl.style.color = 'orange'; }
+        if (msgEl) { msgEl.textContent = 'Parameters saved, but failed to refresh: ' + e.message; msgEl.style.color = '#ca8a04'; }
       }
-      // Refresh the definitions list so UI reflects latest metadata
-      try { loadReportDefinitions(); } catch (e) {}
+      try { loadReportDefinitions(); } catch (e) { /* ignore */ }
     } catch (e) {
-      if (msgEl) { msgEl.textContent = 'Error saving parameters: ' + e.message; msgEl.style.color = 'red'; }
+      if (msgEl) { msgEl.textContent = 'Error saving parameters: ' + e.message; msgEl.style.color = '#b91c1c'; }
     }
   };
 }
@@ -1526,69 +2663,142 @@ if (importBtn) {
     msgEl.style.whiteSpace = 'pre-line';
     msgEl.style.color = 'blue';
     
-    const fd = new FormData();
-    for (let f of files) fd.append('files', f);
     const sheetNameVal = document.getElementById('sheetName').value.trim();
-    
-    // If "Create New Table" is selected, pass special flag
-    if (tableName === '__CREATE_NEW__') {
-      fd.append('create_new', 'true');
-    } else {
-      fd.append('table_name', tableName);
-    }
-
-    if (sheetNameVal) {
-      fd.append('sheet_name', sheetNameVal);
-    }
-    
     const token = sessionStorage.getItem('token');
     
-    try {
-      const res = await fetch('/import-data', {
+    // Helper function to perform import with optional duplicate_action
+    async function doImport(duplicateAction = null) {
+      const importFd = new FormData();
+      for (let f of files) importFd.append('files', f);
+      if (tableName === '__CREATE_NEW__') {
+        importFd.append('create_new', 'true');
+      } else {
+        importFd.append('table_name', tableName);
+      }
+      if (sheetNameVal) {
+        importFd.append('sheet_name', sheetNameVal);
+      }
+      if (duplicateAction) {
+        importFd.append('duplicate_action', duplicateAction);
+      }
+      
+      return fetch('/import-data', {
         method: 'POST',
-        body: fd,
+        body: importFd,
         headers: token ? {'Authorization': 'Bearer ' + token} : {}
       });
+    }
+    
+    // Helper to handle import response after duplicate action
+    async function handleImportResponse(res) {
+      if (res.ok) {
+        const j = await res.json();
+        handleImportSuccess(j);
+      } else {
+        const err = await res.text();
+        msgEl.innerText = '✗ Import Failed: ' + err;
+        msgEl.style.color = 'red';
+      }
+    }
+    
+    // Helper to show success message
+    function handleImportSuccess(j) {
+      let successMsg = `✓ Import Successful!\n\n`;
+      successMsg += `📊 Rows Imported: ${j.rows_imported}\n`;
+      
+      if (j.details && j.details.length > 0) {
+        const successfulFiles = j.details.filter(d => d.success);
+        if (successfulFiles.length > 0) {
+          successMsg += `📁 Files Processed: ${successfulFiles.length}\n`;
+          successfulFiles.forEach(f => {
+            successMsg += `   • ${f.file}: ${f.rows} rows → ${f.table} (ID: ${f.import_log_id ?? 'N/A'})\n`;
+          });
+          if (j.import_log_ids && j.import_log_ids.length) {
+            successMsg += `🆔 Import Log IDs: ${j.import_log_ids.join(', ')}\n`;
+          }
+        }
+      }
+      
+      msgEl.innerText = successMsg;
+      msgEl.style.color = 'green';
+      msgEl.style.whiteSpace = 'pre-line';
+      
+      // Clear file input
+      document.getElementById('fileInput').value = '';
+      
+      // Reload tables to show newly imported data
+      loadTables();
+      
+      // Reload dashboard summary to update statistics
+      if (typeof loadDashboardSummary === 'function') {
+        loadDashboardSummary();
+      }
+      
+      // Close modal after 3 seconds
+      setTimeout(() => {
+        importModal.style.display = 'none';
+      }, 3000);
+    }
+    
+    try {
+      const res = await doImport();
       
       if (res.ok) {
         const j = await res.json();
         
-        // Build detailed success message
-        let successMsg = `✓ Import Successful!\n\n`;
-        successMsg += `📊 Rows Imported: ${j.rows_imported}\n`;
+        // Check if any duplicates were detected that need user decision
+        const duplicates = (j.details || []).filter(d => d.duplicate && d.options);
         
-        if (j.details && j.details.length > 0) {
-          const successfulFiles = j.details.filter(d => d.success);
-          if (successfulFiles.length > 0) {
-            successMsg += `📁 Files Processed: ${successfulFiles.length}\n`;
-            successfulFiles.forEach(f => {
-              successMsg += `   • ${f.file}: ${f.rows} rows → ${f.table} (ID: ${f.import_log_id ?? 'N/A'})\n`;
-            });
-            if (j.import_log_ids && j.import_log_ids.length) {
-              successMsg += `🆔 Import Log IDs: ${j.import_log_ids.join(', ')}\n`;
-            }
-          }
+        if (duplicates.length > 0) {
+          // Show duplicate dialog with options
+          const dup = duplicates[0];
+          const importedAt = dup.duplicate_info?.imported_at ? new Date(dup.duplicate_info.imported_at).toLocaleString() : 'unknown';
+          msgEl.innerHTML = `
+            <div style="background:#fff3cd; border:1px solid #ffc107; border-radius:8px; padding:16px; margin-bottom:12px;">
+              <strong style="color:#856404;">⚠️ Duplicate File Detected</strong>
+              <p style="margin:10px 0; color:#856404;">${dup.message}</p>
+              <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:12px;">
+                <button id="dupAppendBtn" style="padding:8px 16px; background:#28a745; color:white; border:none; border-radius:6px; cursor:pointer; font-weight:600;">
+                  ➕ Append to Existing
+                </button>
+                <button id="dupOverwriteBtn" style="padding:8px 16px; background:#dc3545; color:white; border:none; border-radius:6px; cursor:pointer; font-weight:600;">
+                  🔄 Overwrite Table
+                </button>
+                <button id="dupSkipBtn" style="padding:8px 16px; background:#6c757d; color:white; border:none; border-radius:6px; cursor:pointer; font-weight:600;">
+                  ⏭️ Skip This File
+                </button>
+              </div>
+              <p style="font-size:12px; color:#666; margin-top:10px;">
+                Previous import: ${dup.duplicate_info?.rows_imported || 0} rows on ${importedAt}
+              </p>
+            </div>
+          `;
+          
+          // Wire up buttons
+          document.getElementById('dupAppendBtn').onclick = async () => {
+            msgEl.innerText = '⏳ Appending data to existing table...';
+            msgEl.style.color = 'blue';
+            const appendRes = await doImport('append');
+            handleImportResponse(appendRes);
+          };
+          
+          document.getElementById('dupOverwriteBtn').onclick = async () => {
+            msgEl.innerText = '⏳ Overwriting table with new data...';
+            msgEl.style.color = 'blue';
+            const overwriteRes = await doImport('overwrite');
+            handleImportResponse(overwriteRes);
+          };
+          
+          document.getElementById('dupSkipBtn').onclick = async () => {
+            msgEl.innerText = '⏭️ File skipped. No changes made.';
+            msgEl.style.color = '#6c757d';
+          };
+          
+          return; // Wait for user action
         }
         
-        msgEl.innerText = successMsg;
-        msgEl.style.color = 'green';
-        msgEl.style.whiteSpace = 'pre-line';
-        
-        // Clear file input
-        document.getElementById('fileInput').value = '';
-        
-        // Reload tables to show newly imported data
-        loadTables();
-        
-        // Reload dashboard summary to update statistics
-        if (typeof loadDashboardSummary === 'function') {
-          loadDashboardSummary();
-        }
-        
-        // Close modal after 3 seconds
-        setTimeout(() => {
-          importModal.style.display = 'none';
-        }, 3000);
+        // No duplicates, show success
+        handleImportSuccess(j);
       } else {
         const err = await res.text();
         let errorMsg = '✗ Import Failed\n\n';
@@ -1831,7 +3041,7 @@ if (refreshLocalFilesBtn) {
 }
 // Redirect Power BI button to standalone page
 if (showPowerBIBtn) {
-  showPowerBIBtn.onclick = () => { window.location.href = '/powerbi'; };
+  showPowerBIBtn.onclick = () => { navigateTo('/powerbi'); };
 }
 
 if (closePowerBIBtn && powerbiModal) {
@@ -2087,3 +3297,156 @@ if (savePwdBtn) {
     }
   };
 }
+
+// ========== User Permissions Management ==========
+const PERMISSION_KEYS = ['import_data', 'create_table', 'delete_table', 'run_reports', 'view_powerbi', 'manage_reports', 'view_dashboard'];
+
+async function loadAllPermissions() {
+  const loading = document.getElementById('permissionsLoading');
+  const table = document.getElementById('permissionsTable');
+  const tbody = document.getElementById('permissionsTableBody');
+  const msg = document.getElementById('permissionsMsg');
+  
+  if (loading) loading.style.display = 'block';
+  if (table) table.style.display = 'none';
+  if (msg) msg.textContent = '';
+  
+  try {
+    const token = sessionStorage.getItem('token');
+    const res = await fetch('/permissions/all-users', {
+      headers: { 'Authorization': 'Bearer ' + token }
+    });
+    
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.detail || 'Failed to load permissions');
+    }
+    
+    const data = await res.json();
+    const users = data.users || [];
+    
+    if (tbody) {
+      tbody.innerHTML = '';
+      
+      users.forEach(user => {
+        const row = document.createElement('tr');
+        row.style.borderBottom = '1px solid #e2e8f0';
+        
+        // Username
+        const tdUser = document.createElement('td');
+        tdUser.style.padding = '10px 12px';
+        tdUser.style.fontWeight = '500';
+        tdUser.textContent = user.username;
+        row.appendChild(tdUser);
+        
+        // Role
+        const tdRole = document.createElement('td');
+        tdRole.style.padding = '10px 12px';
+        tdRole.innerHTML = user.is_admin 
+          ? '<span style="background:#fef3c7; color:#92400e; padding:2px 8px; border-radius:4px; font-size:11px;">Admin</span>'
+          : '<span style="background:#e0e7ff; color:#3730a3; padding:2px 8px; border-radius:4px; font-size:11px;">User</span>';
+        row.appendChild(tdRole);
+        
+        // Permission checkboxes
+        PERMISSION_KEYS.forEach(perm => {
+          const td = document.createElement('td');
+          td.style.padding = '10px 12px';
+          td.style.textAlign = 'center';
+          
+          const checkbox = document.createElement('input');
+          checkbox.type = 'checkbox';
+          checkbox.checked = user.permissions[perm] === true;
+          checkbox.disabled = user.is_admin; // Admins always have all permissions
+          checkbox.style.width = '18px';
+          checkbox.style.height = '18px';
+          checkbox.style.cursor = user.is_admin ? 'not-allowed' : 'pointer';
+          
+          if (!user.is_admin) {
+            checkbox.onchange = async () => {
+              await updateUserPermission(user.user_id, perm, checkbox.checked);
+            };
+          }
+          
+          td.appendChild(checkbox);
+          row.appendChild(td);
+        });
+        
+        tbody.appendChild(row);
+      });
+    }
+    
+    if (loading) loading.style.display = 'none';
+    if (table) table.style.display = 'block';
+    
+  } catch (e) {
+    if (loading) loading.style.display = 'none';
+    if (msg) {
+      msg.textContent = '❌ ' + e.message;
+      msg.style.color = '#dc2626';
+    }
+  }
+}
+
+async function updateUserPermission(userId, permissionName, granted) {
+  const msg = document.getElementById('permissionsMsg');
+  try {
+    const token = sessionStorage.getItem('token');
+    const res = await fetch(`/permissions/user/${userId}`, {
+      method: 'POST',
+      headers: {
+        'Authorization': 'Bearer ' + token,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ permission_name: permissionName, granted: granted })
+    });
+    
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.detail || 'Failed to update permission');
+    }
+    
+    const data = await res.json();
+    if (msg) {
+      msg.textContent = '✓ ' + data.message;
+      msg.style.color = '#16a34a';
+      setTimeout(() => { if (msg) msg.textContent = ''; }, 3000);
+    }
+    
+  } catch (e) {
+    if (msg) {
+      msg.textContent = '❌ ' + e.message;
+      msg.style.color = '#dc2626';
+    }
+    // Reload to reset checkbox states
+    loadAllPermissions();
+  }
+}
+
+// Wire up permissions modal
+document.addEventListener('DOMContentLoaded', () => {
+  const showPermissionsBtn = document.getElementById('showPermissionsBtn');
+  const permissionsModal = document.getElementById('permissionsModal');
+  const closePermissionsBtn = document.getElementById('closePermissionsBtn');
+  
+  if (showPermissionsBtn && permissionsModal) {
+    showPermissionsBtn.onclick = () => {
+      permissionsModal.style.display = 'block';
+      loadAllPermissions();
+    };
+  }
+  
+  if (closePermissionsBtn && permissionsModal) {
+    closePermissionsBtn.onclick = () => {
+      permissionsModal.style.display = 'none';
+    };
+  }
+  
+  // Close modal when clicking outside
+  if (permissionsModal) {
+    permissionsModal.onclick = (e) => {
+      if (e.target === permissionsModal) {
+        permissionsModal.style.display = 'none';
+      }
+    };
+  }
+});
