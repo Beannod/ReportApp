@@ -1,110 +1,49 @@
-# Project Overview
+# README
 
-ReportApp is a robust application for generating and managing reports efficiently. This project aims to simplify the reporting process and increase productivity in data handling.
+## Overview
+This application consists of a FastAPI backend coupled with a static frontend. This architecture allows for a streamlined experience for users, providing efficient API responses and an engaging user interface.
 
 ## Features
-- User authentication via JWT
-- PDF report generation
-- Data import/export capabilities
-- Integration with Power BI for advanced analytics
+- **JWT Authentication**: Secure user authentication is implemented using JSON Web Tokens (JWT).
+- **Import CSV/XLSX**: Users can import CSV and XLSX files with a preview of the data, complete with logging and duplicate record handling.
+- **Report Definitions**: Reports can be defined based on stored procedures, enabling complex data retrieval and report generation.
+- **Run Reports**: Users can trigger reports to execute based on their defined parameters.
+- **Parameter Dropdown Lookup**: Dynamic dropdowns allow for parameter selections in reports, enhancing user interaction.
+- **Power BI Embed Management**: Easily manage embedded Power BI reports within the application.
+- **Admin/Settings Interface**: An administrative interface is provided for managing settings and user permissions.
+- **Diagnostics**: Tools for diagnostics help in monitoring the application’s health and performance.
 
 ## Architecture
-The application is built using a microservices architecture that allows for modular development and easy scalability.
+The application is structured into three main components:
+- **app/**: Contains the backend FastAPI application.
+- **frontend/**: Contains the static frontend files.
+- **settings.json**: Configuration settings for the application.
 
-## Database flow
-- **Settings storage:** Database connection details and admin configuration are persisted in `instance/settings.json`.
-- **Preferred database:** The app primarily targets **SQL Server** using **ODBC + pyodbc** for live operations.
-- **Fallback database:** When SQL Server is not available, the app can use a **SQLite** database for app-local state and seeding.
-- **Import pipeline:** CSV/XLSX uploads are parsed (preview supported), written into the target database tables, and the run is recorded in an `import_log` for traceability.
-- **Report execution:** Reports are defined as **stored procedures**; when a user runs a report, the backend executes the stored procedure against the reports database and returns **tabular results** to the UI.
-
-## Workflow
-1. User logs in.
-2. Data is imported from different sources.
-3. Reports are generated based on the imported data.
-4. Users can export reports to various formats.
+## Database Flow
+The application primarily uses SQL Server via ODBC/pyodbc, with SQLite as a fallback option. This allows flexibility depending on the user's environment.
 
 ## Setup Instructions
-### Windows + venv + uvicorn
-1. Install Python and pip.
-2. Create a virtual environment:
-   ```bash
-   python -m venv venv
-   ```
-3. Activate the virtual environment:
-   ```bash
-   venv\Scripts\activate
-   ```
-4. Install required packages:
-   ```bash
-   pip install -r requirements.txt
-   ```
-5. Run the server:
-   ```bash
-   uvicorn app.main:app --reload
-   ```
+1. **Windows Virtual Environment**:
+   - Set up a virtual environment using `venv`.
+2. **Install Required Packages**:
+   - Run the command: `pip install -r requirements.txt` to install dependencies.
+3. **Run the Application**:
+   - Execute the application with `uvicorn app.main:app`.
 
 ## Configuration
-### settings.json
-- The `settings.json` file contains configuration settings for the application. Make sure to adjust the parameters according to your environment.
+- Instance settings are found in `instance/settings.json`.
+- Environment variables include `JWT_SECRET` for JWT authentication and `ADMIN_SETTINGS_PASSWORD` for the admin panel.
 
-### SQL Server ODBC/pyodbc Requirements
-- Install the ODBC Driver for SQL Server.
-- Ensure pyodbc is included in your `requirements.txt` or installed via pip:
-   ```bash
-   pip install pyodbc
-   ```
-
-## Key Endpoints Summary
-- `/api/login`: User authentication
-- `/api/reports`: Create and retrieve reports
-- `/api/data/import`: Import data sources
+## Endpoints Summary
+- **/login**: Authenticate users and return a JWT.
+- **/import-data**: Endpoint for importing data from CSV/XLSX files.
+- **/report/run**: Trigger report generation based on user-defined parameters.
 
 ## Security Notes
-- Make sure to set a strong JWT_SECRET in your environment variables.
-- Default credentials are admin/admin. Change them upon installation.
+- The default admin username and password are both set to `admin`. It's crucial to change these credentials immediately to secure the application.
 
-## Quick Start
-1. Clone the repository:
-   ```bash
-   git clone https://github.com/Beannod/ReportApp.git
-   ```
-2. Follow the setup instructions above to get started.
+## Logs/Debugging Notes
+Monitor the application’s logs for any debugging information that may require attention.
 
-## App Workflow
-- The application workflow guides users through data importing to report generation seamlessly.
-
-## Project Structure
-```
-ReportApp/
-│
-├── app/
-├── frontend/
-├── MSSQL/
-├── scripts/
-├── requirements.txt
-└── run_app.bat
-```
-
-## Running Reports
-- Navigate to the reports section of the application to run and schedule reports.
-
-## Importing Data
-- Use the `/import-data` endpoint to import data files in various formats.
-
-## Power BI (optional)
-- Connect your reports with Power BI for enhanced data visualization.
-
-## Troubleshooting
-- Common issues can be found in the repository scripts/logs. If problems persist, refer to the documentation.
-
-## Roadmap/Next Steps
-- Implement additional report formats.
-- Enhance user authentication.
-- Improve data visualization options.
-
-## License
-- This project is licensed under the MIT License. See the LICENSE file for details.
-
-## Documentation
-- For more software details, refer to [SOFTWARE_DOCUMENTATION.md](SOFTWARE_DOCUMENTATION.md)
+## Documentation Link
+For further details and documentation, please refer to [SOFTWARE_DOCUMENTATION.md](SOFTWARE_DOCUMENTATION.md).
